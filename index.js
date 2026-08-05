@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.5.0';
+const MODULE_VERSION = '0.6.0';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -7,6 +7,7 @@ const MENU_ITEM_ID = 'soullink-menu-item';
 const MENU_API_ID = 'soullink-menu-api';
 const MENU_ICON_CLASS = 'fa-solid fa-link';
 const LOG_ICON_CLASS = 'fa-solid fa-scroll';
+const PRESET_ICON_CLASS = 'fa-solid fa-file-lines';
 const PANEL_TITLE_ID = 'soullink-panel-title';
 const PANEL_BACK_ID = 'soullink-panel-back';
 const HOME_VIEW_ID = 'soullink-home-view';
@@ -34,6 +35,15 @@ const LOG_LIST_ID = 'soullink-log-list';
 const LOG_BACK_ID = 'soullink-log-back-to-latest';
 const LOG_STATUS_ID = 'soullink-log-status';
 const LOG_PAUSED_ID = 'soullink-log-paused-badge';
+const PRESET_VIEW_ID = 'soullink-preset-view';
+const HOME_PRESET_CARD_ID = 'soullink-home-preset-card';
+const HOME_PRESET_STATUS_ID = 'soullink-home-preset-status';
+const PRESET_TABS_ID = 'soullink-preset-tabs';
+const PRESET_TEXT_ID = 'soullink-preset-text';
+const PRESET_SAVE_ID = 'soullink-preset-save';
+const PRESET_RESET_ID = 'soullink-preset-reset';
+const PRESET_STATUS_ID = 'soullink-preset-status';
+const PRESET_COUNT_ID = 'soullink-preset-count';
 
 const SPHERE_POSITION_KEY = `${MODULE_NAME}_floating_sphere_position`;
 const SPHERE_DRAG_THRESHOLD = 8;
@@ -63,12 +73,176 @@ const HOST_EVENTS_TO_LOG = Object.freeze([
   'onlineStatusChanged',
 ]);
 
+const PRESET_DEFAULT_KEY = 'archiveSystem';
+const PRESET_META = Object.freeze({
+  archiveSystem: Object.freeze({ label: '档案系统', title: '档案系统提示词', description: '子 agent 依据近期对话维护指定角色的完整档案（标量字段 + 列表分节增量更新）。' }),
+  archivePreScreen: Object.freeze({ label: '档案预筛', title: '档案预筛系统提示词', description: '子 agent 预筛本轮哪些已注册角色的信息或记忆会发生变化。' }),
+  roleplaySystem: Object.freeze({ label: '角色扮演', title: '角色扮演系统提示词', description: '子 agent 以指定角色视角单独扮演，输出内心独白（含信息差与 NPC 行为逻辑）。' }),
+  roleplayPreScreen: Object.freeze({ label: '角色扮演预筛', title: '角色扮演预筛系统提示词', description: '子 agent 预筛本轮哪些已注册角色会开口或有戏份。' }),
+});
+
 const BOOTSTRAP_RUNTIME_KEY = '__soullink_bootstrapped__';
 const MENU_RECOVERY_OBSERVER_KEY = '__soullink_menu_recovery_observer__';
 const APP_READY_HANDLER_KEY = '__soullink_app_ready_handler__';
 const ESC_KEY_HANDLER_KEY = '__soullink_esc_key_handler__';
 const LOG_CAPTURE_KEY = '__soullink_log_capture__';
 const LOG_EVENT_LOG_KEY = '__soullink_log_event_handler__';
+
+const DEFAULT_PROMPTS = Object.freeze({
+  archiveSystem: `你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。
+你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
+档案用于让 AI 依据它完成该角色的角色扮演；档案分两类字段：标量字段与列表分节。
+档案应尽量完整：能从对话推断的标量字段与 MBTI 性格标签应及时补全，使 AI 能据此完整扮演该角色。
+
+【档案结构】
+- 标量字段（单值，直接覆盖）：name 姓名、age 年龄、gender 性别、occupation 职业。
+- 列表分节（条目数组，增量维护）：
+  - personality 性格：用四字母 MBTI 类型标签表示（如 INTP、ESFJ），每条即为一个标签；一个档案通常只保留一个最贴切的 MBTI 类型。
+  - worldview 世界观：该角色已知/相信的关于这个世界运转的规则（魔法体系、社会结构、超自然设定、种族矛盾等）。
+    记录详细度应随世界观偏离现实的程度而加大：世界观与现实差异越大，越要拆分成多条具体规则，
+    把每一处「与现实常识不同」的设定都落到档案里，防止 AI 因默认套用现实世界的运转规则而演错设定。
+  - family 家庭背景：出身、家人、成长环境等背景信息，每条一件事。
+  - relationships 人际关系：与谁是什么关系，每条一段关系（如「与露比：挚友」）。
+  - memory 记忆：该角色在对话中亲历、被告知或在场目击的事实。
+
+【输入说明】
+- character 是本轮要判断的角色名。
+- current_profile 是该角色当前已记录的档案：标量字段为字符串，列表分节为条目数组（每项含 id 与 content）。
+- recent_messages 是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。
+- world_info_background 是提供的背景补充信息，用 <World_Info></World_Info> 包裹；它不代表该角色亲历或已知，
+  仅供你了解世界观以便合理推断；是否写入该角色记忆，仍须判断该角色是否真的亲历/被告知/目击。
+- turn_index 是当前对话的消息索引，用于参考，无需输出。
+
+【输出契约】
+- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
+- 结构必须是：
+  { "fields": { "age": "25 岁", "occupation": "主治医师" },
+    "personality":   { "add": [...], "remove": [id...], "update": [{"id":"p1","content":"..."}] },
+    "worldview":     { "add": [...], "remove": [...], "update": [...] },
+    "family":        { "add": [...], "remove": [...], "update": [...] },
+    "relationships": { "add": [...], "remove": [...], "update": [...] },
+    "memory":        { "add": [...], "remove": [...], "update": [...] } }
+- fields：本轮需要改写的标量字段，只放有变化的；未变化的字段省略。
+- 各列表分节的 add/remove/update 含义：
+  - add：本轮该角色档案里新增的条目，每条一句话、一件事，避免与同分节已有内容重复。
+  - remove：已失效或不再成立的旧条目的 id（例如关系变化使旧条目失效）。
+  - update：需要改写（补充或纠正）的旧条目，按 id 指定并给出新的 content。
+- 同一事实不要既 add 又 update。
+- 若本轮该角色档案没有任何变化，返回空对象 {}。
+- 任意字段为空时可以省略该字段，或返回空数组。
+
+【判断要点】
+- 标量字段（姓名/年龄/性别/职业）与 MBTI 性格标签一旦能从对话推断出，就应补全或更新，保证档案完整、可支撑角色扮演。
+- 性格只给一个四字母 MBTI 类型（如 INTP），不要写长句描述。
+- 世界观是角色扮演是否贴合设定的关键：当世界观明显偏离现实（如存在魔法、超自然、异种生理、不同的社会规则或物理法则）时，
+  应把每一条与「现实常识」不同的运转规则单独记为一条，宁可多拆几条，也不要浓缩成一句模糊的概括；
+  世界观越是不同于现实，记录越要具体、详尽。现实向世界观可保持精简。
+- 记录世界观时，可参照提供的世界背景（world_info_background）
+  判断哪些设定该角色已知或相信；但只有该角色确实获知（亲历/被告知/目击）的设定才应进入其世界观，
+  且应记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。
+- 家庭背景/人际关系/记忆较稳定，仅在对话给出明确新信息时才新增或修改。
+- 只在确有依据时才 add；依据模糊时倾向不新增。
+- remove/update 要谨慎，只有在旧条目明显失效或需要纠正时才用。`,
+  archivePreScreen: `你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」。
+你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
+
+【输入说明】
+- registered_characters 是当前全部已注册角色名单。
+- recent_messages 是近期对话的最后几条，可能包含各角色不在场的段落——据此判断哪些角色本轮获得了新信息、新经历、或关系/背景发生了值得记录的变动。
+
+【判断要点】
+- 只列出本轮确实有值得写入或更新档案的新信息/新记忆的角色（例如亲历了事件、被告知了新事实、关系发生变化等）。
+- 若某角色本轮没有任何新信息可记录，只是单纯登场或说话，不要列入。
+- 拿不准时倾向不列入，宁少勿多。
+
+【输出契约】
+- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
+- 结构必须是：{ "characters": ["角色名", ...] }
+- characters 必须是 registered_characters 中角色名的子集；本轮无角色信息变化时返回空数组 []。`,
+  roleplaySystem: `你是角色扮演引擎，职责是单独扮演「指定角色」，输出该角色在当下场景中的内心独白。
+你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
+内心独白用于让主模型依据各角色当下的心理状态完成该角色的扮演；每个角色独立成章，只表达该角色自己的内心。
+
+【角色沉浸要求】
+- 以该角色的第一人称书写其内心独白，沉浸在该角色中，用内心独白分析剧情、规划回复。
+- 在思考中先分析：我当前的身份是什么、我当下的处境如何、我对当前场景的判断是什么；
+  再据此推演本轮的心情、想法与下一步行动。
+
+【认知局限与信息差（最高优先级）】
+- 该角色只能获知三样来源的信息：其档案（记忆/世界观/人际关系）、以及近期对话中它亲历、被告知或在场目击的内容。
+  除此之外的信息对它是不可知的，一律不得使用。
+- 角色之间刻意存在信息差：不同角色掌握不同信息，这本身是戏剧的核心。
+- 该角色绝不能出现「全知」表现，尤其不得：
+  - 知道它没有获知过的事实、事件或人物动机；
+  - 知道其他角色的内心想法、秘密或不在场时发生的事；
+  - 依赖对话外的作者设定、旁白或世界知识补齐它本不该知道的东西。
+- 当该角色缺失某条信息时，必须真实地表现出相应的状态：困惑、猜测、误判、求证、或被蒙在鼓里，
+  而不是绕过缺失直接知晓。宁可让它因信息不足而判断失误，也不要让它正确得异常。
+- 该角色对信息的解读受其认知框架限制：同样的世界规则，不同身份/立场/经历的角色会用各自的方式理解，
+  会相信、怀疑、曲解或无视它——据此呈现真实的认知局限，而不是中立客观地全盘接收。
+
+<npc_behavior>
+# NPC行为逻辑
+- 信息局限：
+  - 有什么：NPC有认知边界，只掌握部分情报与偏见。
+  - 行为倾向：NPC会基于己方视角误判真相，并在获取新信息时修正立场。
+- 性欲：
+  - 有什么：NPC有自身的生理需求与性癖偏好，同时可能拥有固定、隐秘或复合的性伴侣关系。
+  - 行为倾向：NPC会受性吸引主动接近目标；也会因伴侣关系产生利益捆绑与情感护短，甚至为了争夺伴侣或隐瞒地下情而做出妥协、撒谎与攻击行为。
+- 逐利：
+  - 有什么：NPC有想得到的目标和想保有的利益。
+  - 行为倾向：NPC会权衡成本，为自身利益行动，在风险过大时妥协。
+- 情感：
+  - 有什么：NPC有独立的社交圈、情感需求和人际羁绊。
+  - 行为倾向：NPC会寻求情感满足，为在意的人冒险或妥协；与其他NPC之间也会因情感恩怨形成拉帮结派、站队结盟或明争暗斗。
+- 生活：
+  - 有什么：NPC有独立的日常安排、作息规律和生活节奏。
+  - 行为倾向：NPC会在特定时段出现在特定地点行事，若节奏被打断或计划被干扰，会产生相应的情绪波动与行动调整。
+- 嫉妒：
+  - 有什么：NPC有对他人优势（名利、才华、伴侣等）的攀比心与落差感。
+  - 行为倾向：NPC会暗中较劲、言语贬低、设局打压，在利益冲突时优先阻碍其嫉妒对象，甚至表面逢迎背后捅刀。
+- 选择性外向:
+    规则: 社恐或内向的角色在熟人面前会彻底放松，熟人就是他们的情绪出口，必然变得外向且话多。
+    举例: 对陌生人唯唯诺诺的社恐NPC，一见到玩家就立刻喋喋不休，甚至会因为玩家看了别人一眼而撒娇作闹、翻旧账。
+
+# NPC冲突逻辑
+- 内心冲突： 人物与自己思想/情感的斗争
+- 个人冲突：人物与家人、恋人、朋友的斗争
+- 个人外冲突：人物与社会、机构、自然、物理力量的斗争
+**最强大的场景同时融合多个层面。**
+</npc_behavior>
+
+【输入说明】
+- character 是本次要单独扮演的角色名。
+- current_profile 是该角色当前已记录的档案（姓名/年龄/性别/职业 + 性格/世界观/家庭背景/人际关系/记忆），
+  仅用于维持该角色的设定一致，不要输出其中的内容。
+- 其中 worldview（世界观）分节记录该角色已知/相信的世界运转规则，扮演时必须据此推断该角色如何看待世界、
+  什么对它而言是常识、什么对它而言是离奇或未知；不得让该角色拥有其 worldview 之外的全知设定。
+- recent_messages 是近期对话，可能包含该角色不在场的段落——据此判断该角色当下真实能获知什么。
+
+【输出契约】
+- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
+- 结构必须是：{ "character": "角色名", "monologue": "该角色第一人称的内心独白" }
+- monologue 必须是一段完整的内心独白，用该角色的口吻，包含三个要素：心情、想法、下一步行动；
+  并体现该角色的信息盲区与认知框架。
+- 只表达该角色自己的内心，不要输出其他角色的内容，不要输出旁白或系统设定。`,
+  roleplayPreScreen: `你是角色扮演预筛裁判，职责是判断本轮对话中「哪些已注册角色会开口或有戏份」。
+你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
+
+【输入说明】
+- registered_characters 是当前全部已注册角色名单。
+- recent_messages 是近期对话的最后几条，可能包含各角色不在场的段落——据此判断每轮实际有谁登场、有谁被点名、有谁该回应。
+
+【判断要点】
+- 只列出本轮有开口、被直接点名、或明显有戏份（剧情需要其回应/参与）的角色。
+- 若某角色没有戏份、只是被提及但不需要开口或参与，不要列入。
+- 拿不准时倾向不列入，宁少勿多。
+
+【输出契约】
+- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
+- 结构必须是：{ "characters": ["角色名", ...] }
+- characters 必须是 registered_characters 中角色名的子集；本轮无人有戏份时返回空数组 []。`,
+});
 
 const DEFAULT_SETTINGS = Object.freeze({
   apiUrl: '',
@@ -77,6 +251,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   modelOptions: [],
   logMaxEntries: LOG_MAX_ENTRIES_DEFAULT,
   logAutoScroll: true,
+  prompts: DEFAULT_PROMPTS,
 });
 
 const FALLBACK_SETTINGS_STORE = new WeakMap();
@@ -126,6 +301,18 @@ function getSettings(ctx) {
   if (!Array.isArray(settings.modelOptions)) {
     settings.modelOptions = [];
     shouldSave = true;
+  }
+  const prompts = settings.prompts;
+  if (!prompts || typeof prompts !== 'object' || Array.isArray(prompts)) {
+    settings.prompts = cloneValue(DEFAULT_PROMPTS);
+    shouldSave = true;
+  } else {
+    for (const [key, value] of Object.entries(DEFAULT_PROMPTS)) {
+      if (typeof prompts[key] !== 'string') {
+        prompts[key] = value;
+        shouldSave = true;
+      }
+    }
   }
   if (shouldSave) saveSettings(ctx);
   return settings;
@@ -608,6 +795,7 @@ function openPanel() {
   if (!panel) return;
   logApp('debug', '面板已打开');
   showPanelView(HOME_VIEW_ID);
+  refreshHomePresetStatus();
   panel.classList.add('is-open');
   panel.setAttribute('aria-hidden', 'false');
   ensurePanelPosition(panel);
@@ -634,6 +822,11 @@ const PANEL_VIEW_TITLES = Object.freeze({
   [HOME_VIEW_ID]: MODULE_NAME,
   [API_VIEW_ID]: 'API 连接',
   [LOG_VIEW_ID]: '日志系统',
+  [PRESET_VIEW_ID]: '预设',
+});
+const PANEL_WIDE_MODES = Object.freeze({
+  [LOG_VIEW_ID]: 'is-log-mode',
+  [PRESET_VIEW_ID]: 'is-preset-mode',
 });
 
 function showPanelView(viewId) {
@@ -645,11 +838,19 @@ function showPanelView(viewId) {
     view.setAttribute('aria-hidden', active ? 'false' : 'true');
   });
   const dialog = panel.querySelector('.soullink-panel__dialog');
-  if (dialog) dialog.classList.toggle('is-log-mode', viewId === LOG_VIEW_ID);
+  if (dialog) {
+    for (const mode of Object.values(PANEL_WIDE_MODES)) dialog.classList.remove(mode);
+    const wideMode = PANEL_WIDE_MODES[viewId];
+    if (wideMode) dialog.classList.add(wideMode);
+  }
   if (viewId === LOG_VIEW_ID) {
     renderLogList();
     updateLogStats();
     logApp('debug', '打开日志视图');
+  }
+  if (viewId === PRESET_VIEW_ID) {
+    renderPresetEditor();
+    logApp('debug', '打开预设视图');
   }
   const back = document.getElementById(PANEL_BACK_ID);
   if (back) back.style.visibility = viewId === HOME_VIEW_ID ? 'hidden' : 'visible';
@@ -663,6 +864,7 @@ function initPanelViews(panel) {
   document.getElementById(PANEL_BACK_ID)?.addEventListener('click', () => showPanelView(HOME_VIEW_ID));
   document.getElementById(HOME_API_CARD_ID)?.addEventListener('click', () => showPanelView(API_VIEW_ID));
   document.getElementById(HOME_LOG_CARD_ID)?.addEventListener('click', () => showPanelView(LOG_VIEW_ID));
+  document.getElementById(HOME_PRESET_CARD_ID)?.addEventListener('click', () => showPanelView(PRESET_VIEW_ID));
   panel.dataset.viewsReady = 'true';
 }
 
@@ -712,6 +914,11 @@ function createPanel() {
               <span class="soullink-home__card-icon"><span class="${LOG_ICON_CLASS}"></span></span>
               <span class="soullink-home__card-title">日志系统</span>
               <span id="${HOME_LOG_STATUS_ID}" class="soullink-home__card-status" data-state="idle">记录中…</span>
+            </button>
+            <button type="button" id="${HOME_PRESET_CARD_ID}" class="soullink-home__card soullink-home__card--preset" title="打开预设管理">
+              <span class="soullink-home__card-icon"><span class="${PRESET_ICON_CLASS}"></span></span>
+              <span class="soullink-home__card-title">预设</span>
+              <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__card-status" data-state="idle">默认配置</span>
             </button>
           </div>
         </section>
@@ -780,6 +987,27 @@ function createPanel() {
             </div>
           </div>
         </section>
+        <section id="${PRESET_VIEW_ID}" class="soullink-view" aria-hidden="true">
+          <div class="soullink-preset">
+            <p class="soullink-preset__note">四个子系统的提示词都放在这里。修改后记得点击「保存」；「恢复默认」会把当前提示词还原为出厂内容。</p>
+            <div id="${PRESET_TABS_ID}" class="soullink-preset__tabs" role="tablist" aria-label="选择要编辑的提示词">
+              ${Object.entries(PRESET_META).map(([key, meta]) => `
+                <button type="button" class="soullink-preset__tab${key === presetActiveKey ? ' is-active' : ''}" role="tab" aria-selected="${key === presetActiveKey ? 'true' : 'false'}" data-prompt-key="${key}" title="${meta.title}">${meta.label}</button>
+              `).join('')}
+            </div>
+            <div class="soullink-preset__editor">
+              <div class="soullink-preset__meta">
+                <span id="${PRESET_STATUS_ID}" class="soullink-preset__status" data-state="default">默认内容</span>
+                <span id="${PRESET_COUNT_ID}" class="soullink-preset__count">0 字</span>
+              </div>
+              <textarea id="${PRESET_TEXT_ID}" class="soullink-input soullink-preset__text" spellcheck="false" aria-label="提示词内容" placeholder="（提示词内容为空）"></textarea>
+              <div class="soullink-preset__actions">
+                <button type="button" id="${PRESET_RESET_ID}" class="soullink-btn soullink-btn--ghost">↺ 恢复默认</button>
+                <button type="button" id="${PRESET_SAVE_ID}" class="soullink-btn soullink-btn--primary" disabled>💾 保存</button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
       <div class="soullink-panel__footer">
         <span>v${MODULE_VERSION}</span>
@@ -792,6 +1020,7 @@ function createPanel() {
   initApiSection(panel);
   initPanelViews(panel);
   initLogView(panel);
+  initPresetSection(panel);
   panel.querySelector('.soullink-panel__close')?.addEventListener('click', closePanel);
   if (!globalThis[ESC_KEY_HANDLER_KEY]) {
     globalThis[ESC_KEY_HANDLER_KEY] = (event) => {
@@ -1443,6 +1672,143 @@ function exposeLogApi() {
   };
 }
 
+// ---------- 预设系统：视图 UI ----------
+let presetActiveKey = PRESET_DEFAULT_KEY;
+const presetUnsaved = {};
+
+function getPromptSettings(ctx) {
+  const settings = ctx ? getSettings(ctx) : null;
+  return settings && typeof settings.prompts === 'object' && settings.prompts ? settings.prompts : DEFAULT_PROMPTS;
+}
+
+function getPromptSavedText(key, ctx) {
+  const prompts = getPromptSettings(ctx);
+  return typeof prompts[key] === 'string' ? prompts[key] : DEFAULT_PROMPTS[key];
+}
+
+function getEditorText() {
+  return String(document.getElementById(PRESET_TEXT_ID)?.value ?? '');
+}
+
+function getPromptDirty(key) {
+  return presetUnsaved[key] !== undefined;
+}
+
+function updatePresetTabs() {
+  document.querySelectorAll('.soullink-preset__tab').forEach((tab) => {
+    const key = tab.dataset.promptKey;
+    const active = key === presetActiveKey;
+    tab.classList.toggle('is-active', active);
+    tab.classList.toggle('is-dirty', getPromptDirty(key));
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+}
+
+function updatePresetStatus(key) {
+  const status = document.getElementById(PRESET_STATUS_ID);
+  const countNode = document.getElementById(PRESET_COUNT_ID);
+  const saveBtn = document.getElementById(PRESET_SAVE_ID);
+  const resetBtn = document.getElementById(PRESET_RESET_ID);
+  const text = getEditorText();
+  const dirty = getPromptDirty(key);
+  if (status) {
+    status.textContent = dirty ? '未保存的更改' : (text === DEFAULT_PROMPTS[key] ? '默认内容' : '已保存的自定义内容');
+    status.dataset.state = dirty ? 'dirty' : (text === DEFAULT_PROMPTS[key] ? 'default' : 'custom');
+  }
+  if (countNode) countNode.textContent = `${text.length} 字 · ${text.split('\n').length} 行`;
+  if (saveBtn) saveBtn.disabled = !dirty;
+  if (resetBtn) resetBtn.disabled = !dirty && text === DEFAULT_PROMPTS[key];
+  updatePresetTabs();
+}
+
+function renderPresetEditor() {
+  const ctx = getContextSafe();
+  const textarea = document.getElementById(PRESET_TEXT_ID);
+  if (!textarea) return;
+  textarea.value = presetUnsaved[presetActiveKey] !== undefined ? presetUnsaved[presetActiveKey] : getPromptSavedText(presetActiveKey, ctx);
+  updatePresetStatus(presetActiveKey);
+}
+
+function refreshHomePresetStatus() {
+  const status = document.getElementById(HOME_PRESET_STATUS_ID);
+  if (!status) return;
+  try {
+    const ctx = getContextSafe();
+    const prompts = getPromptSettings(ctx);
+    let customized = 0;
+    for (const key of Object.keys(DEFAULT_PROMPTS)) {
+      if (typeof prompts[key] === 'string' && prompts[key] !== DEFAULT_PROMPTS[key]) customized += 1;
+    }
+    status.textContent = customized > 0 ? `已自定义 ${customized} 份` : '默认配置';
+    status.dataset.state = customized > 0 ? 'ok' : 'idle';
+  } catch (error) {
+    status.textContent = '默认配置';
+    status.dataset.state = 'idle';
+  }
+}
+
+function savePreset(key) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const prompts = getPromptSettings(ctx);
+  prompts[key] = getEditorText();
+  saveSettingsImmediate(ctx);
+  delete presetUnsaved[key];
+  updatePresetStatus(key);
+  refreshHomePresetStatus();
+  logApp('info', '预设已保存', PRESET_META[key].title);
+  globalThis.toastr?.success?.(`${PRESET_META[key].title} 已保存`, `[${MODULE_NAME}]`);
+}
+
+function resetPreset(key) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const dirty = getPromptDirty(key);
+  const text = getEditorText();
+  if (dirty || text !== DEFAULT_PROMPTS[key]) {
+    const what = dirty ? '未保存的修改' : '已保存的自定义内容';
+    const confirmed = globalThis.confirm?.(`将「${PRESET_META[key].title}」恢复为默认内容？当前${what}将被默认内容覆盖。`);
+    if (!confirmed) return;
+  }
+  const textarea = document.getElementById(PRESET_TEXT_ID);
+  if (textarea) textarea.value = DEFAULT_PROMPTS[key];
+  const prompts = getPromptSettings(ctx);
+  prompts[key] = DEFAULT_PROMPTS[key];
+  saveSettingsImmediate(ctx);
+  delete presetUnsaved[key];
+  updatePresetStatus(key);
+  refreshHomePresetStatus();
+  logApp('info', '预设已恢复默认', PRESET_META[key].title);
+  globalThis.toastr?.info?.(`${PRESET_META[key].title} 已恢复默认`, `[${MODULE_NAME}]`);
+}
+
+function initPresetSection(panel) {
+  if (!panel || panel.dataset.presetReady === 'true') return;
+  const getCtx = () => getContextSafe();
+
+  document.getElementById(PRESET_TABS_ID)?.addEventListener('click', (event) => {
+    const tab = event.target.closest('.soullink-preset__tab');
+    if (!tab || !tab.dataset.promptKey) return;
+    presetActiveKey = tab.dataset.promptKey;
+    renderPresetEditor();
+  });
+
+  document.getElementById(PRESET_TEXT_ID)?.addEventListener('input', () => {
+    const ctx = getCtx();
+    const text = getEditorText();
+    if (text === getPromptSavedText(presetActiveKey, ctx)) delete presetUnsaved[presetActiveKey];
+    else presetUnsaved[presetActiveKey] = text;
+    updatePresetStatus(presetActiveKey);
+  });
+
+  document.getElementById(PRESET_SAVE_ID)?.addEventListener('click', () => savePreset(presetActiveKey));
+  document.getElementById(PRESET_RESET_ID)?.addEventListener('click', () => resetPreset(presetActiveKey));
+
+  renderPresetEditor();
+  refreshHomePresetStatus();
+  panel.dataset.presetReady = 'true';
+  logApp('info', '预设系统已就绪');
+}
 initLogCapture();
 exposeLogApi();
 
