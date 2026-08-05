@@ -1,1 +1,971 @@
-/* SoulLink placeholder styles */
+/* =========================================================
+   SoulLink · 手绘涂鸦风格（paper & ink）
+   纸感底 + 墨水描边 + 马克笔点缀；不规则圆角配合 SVG
+   位移滤镜（#soullink-wobble）模拟手绘抖动。
+   ========================================================= */
+
+.soullink-sphere,
+.soullink-panel__dialog {
+  --sl-ink: #3d2b1f;
+  --sl-ink-soft: rgba(61, 43, 31, 0.45);
+  --sl-paper: #fdf6e3;
+  --sl-paper-deep: #f5ead0;
+  --sl-violet: #7c5cbf;
+  --sl-pink: #e56b6f;
+  --sl-yellow: #f2c14e;
+  --sl-green: #7ba05b;
+  --sl-blue: #5f9dc9;
+  --sl-font: "Comic Sans MS", "Segoe Print", "KaiTi", "楷体", "STKaiti", "FangSong", "仿宋", cursive;
+}
+
+/* ---------- 悬浮球：纸片小贴纸 ---------- */
+.soullink-sphere {
+  position: fixed;
+  z-index: 10000;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  color: var(--sl-violet);
+  font-size: 21px;
+  border-radius: 46% 54% 52% 48% / 54% 46% 54% 46%;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 46%),
+    var(--sl-paper);
+  border: 3px solid var(--sl-ink);
+  box-shadow:
+    4px 5px 0 rgba(61, 43, 31, 0.28),
+    0 10px 18px rgba(61, 43, 31, 0.22);
+  filter: url(#soullink-wobble-strong);
+  transform: rotate(-4deg);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.soullink-sphere::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 2px dashed var(--sl-violet);
+  border-radius: 50%;
+  opacity: 0.5;
+  pointer-events: none;
+  animation: soullink-spin 16s linear infinite;
+}
+
+.soullink-sphere__icon {
+  transform: rotate(5deg);
+  pointer-events: none;
+}
+
+.soullink-sphere:hover {
+  animation: soullink-wiggle 0.45s ease-in-out;
+  box-shadow:
+    5px 6px 0 rgba(61, 43, 31, 0.3),
+    0 12px 22px rgba(61, 43, 31, 0.26);
+}
+
+.soullink-sphere:active {
+  transform: rotate(-2deg) scale(0.94);
+}
+
+.soullink-sphere.is-dragging {
+  cursor: grabbing;
+  transition: none;
+  transform: rotate(0deg) scale(1.06);
+}
+
+.soullink-sphere.is-appearing {
+  animation: soullink-grow-anim 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.soullink-sphere.is-shrinking {
+  animation: soullink-shrink-anim 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes soullink-grow-anim {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes soullink-shrink-anim {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+@keyframes soullink-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes soullink-wiggle {
+  0%, 100% { transform: rotate(-4deg) scale(1); }
+  40% { transform: rotate(3deg) scale(1.07); }
+  70% { transform: rotate(-2deg) scale(1.04); }
+}
+
+/* ---------- 面板：牛皮纸便签卡 ---------- */
+.soullink-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  pointer-events: none;
+}
+
+.soullink-panel.is-open {
+  display: block;
+}
+
+.soullink-panel__dialog {
+  position: fixed;
+  z-index: 1;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  pointer-events: auto;
+  font-family: var(--sl-font);
+  font-size: 14px;
+  color: var(--sl-ink);
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  background: var(--sl-paper);
+  border: 3px solid var(--sl-ink);
+  box-shadow:
+    8px 9px 0 rgba(61, 43, 31, 0.16),
+    0 18px 34px rgba(61, 43, 31, 0.28);
+  filter: url(#soullink-wobble);
+  transform: rotate(-0.6deg);
+}
+
+.soullink-panel__dialog.is-dragging {
+  cursor: grabbing;
+  transform: rotate(0deg);
+}
+
+/* 上下两段贴纸胶带 */
+.soullink-panel__dialog::before,
+.soullink-panel__dialog::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.soullink-panel__dialog::before {
+  top: -13px;
+  left: 50%;
+  width: 108px;
+  height: 28px;
+  transform: translateX(-50%) rotate(-2.5deg);
+  background: rgba(242, 193, 78, 0.55);
+  border-right: 1px dashed rgba(61, 43, 31, 0.2);
+  border-left: 1px dashed rgba(61, 43, 31, 0.2);
+  clip-path: polygon(2% 8%, 98% 0%, 100% 40%, 97% 90%, 4% 100%, 0% 52%);
+}
+
+.soullink-panel__dialog::after {
+  bottom: -12px;
+  left: 50%;
+  width: 92px;
+  height: 24px;
+  transform: translateX(-50%) rotate(2deg);
+  background: rgba(229, 107, 111, 0.55);
+  border-right: 1px dashed rgba(61, 43, 31, 0.18);
+  border-left: 1px dashed rgba(61, 43, 31, 0.18);
+  clip-path: polygon(3% 0%, 97% 6%, 100% 46%, 96% 100%, 2% 94%, 0% 48%);
+}
+
+.soullink-panel__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: move;
+  user-select: none;
+  background: var(--sl-paper-deep);
+  border-bottom: 2px dashed rgba(61, 43, 31, 0.35);
+  border-radius: 255px 15px 0 0 / 15px 255px 0 0;
+}
+
+.soullink-panel__header::after {
+  content: '✿';
+  position: absolute;
+  top: 5px;
+  right: 46px;
+  font-size: 13px;
+  color: var(--sl-pink);
+  transform: rotate(16deg);
+  pointer-events: none;
+}
+
+.soullink-panel__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--sl-violet);
+  font-size: 15px;
+  background: rgba(124, 92, 191, 0.15);
+  border: 2px dashed var(--sl-violet);
+  border-radius: 44% 56% 52% 48% / 56% 44% 56% 44%;
+  transform: rotate(-6deg);
+}
+
+.soullink-panel__title {
+  flex: 1;
+  position: relative;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 1px;
+  transform: rotate(-1deg);
+}
+
+.soullink-panel__title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 6px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='8' viewBox='0 0 120 8'%3E%3Cpath d='M2 5 C 12 1, 22 1, 32 5 S 52 9, 62 5 S 82 1, 92 5 S 112 9, 118 4' fill='none' stroke='%23e56b6f' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / 100% 100%;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.soullink-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2.5px solid var(--sl-ink);
+  border-radius: 47% 53% 50% 50% / 53% 47% 53% 47%;
+  background: transparent;
+  color: var(--sl-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transform: rotate(4deg);
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.soullink-panel__close:hover {
+  background: var(--sl-pink);
+  color: #fff;
+  transform: rotate(-8deg) scale(1.15);
+}
+
+.soullink-panel__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2.5px solid var(--sl-ink);
+  border-radius: 50% 47% 53% 50% / 47% 53% 50% 53%;
+  background: transparent;
+  color: var(--sl-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transform: rotate(-4deg);
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.soullink-panel__back:hover {
+  background: var(--sl-yellow);
+  transform: rotate(6deg) scale(1.12);
+}
+
+.soullink-panel__body {
+  padding: 18px 16px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  background: repeating-linear-gradient(transparent 0 25px, rgba(61, 43, 31, 0.08) 25px 26px);
+}
+
+.soullink-panel__body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.soullink-panel__body::-webkit-scrollbar-thumb {
+  background: rgba(61, 43, 31, 0.35);
+  border: 2px solid var(--sl-paper);
+  border-radius: 255px 10px 255px 10px / 10px 255px 10px 255px;
+}
+
+.soullink-panel__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0 6px;
+  text-align: center;
+}
+
+.soullink-panel__badge {
+  display: inline-flex;
+  padding: 4px 14px;
+  border-radius: 255px 12px 235px 12px / 12px 235px 12px 255px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--sl-violet);
+  background: rgba(124, 92, 191, 0.14);
+  border: 2px dashed var(--sl-violet);
+  transform: rotate(-1.5deg);
+}
+
+.soullink-panel__hint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  opacity: 0.85;
+}
+
+/* ---------- API 连接 ---------- */
+.soullink-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.soullink-panel__section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.soullink-panel__section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1px;
+  background: rgba(242, 193, 78, 0.42);
+  border: 2px dashed rgba(61, 43, 31, 0.5);
+  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
+  transform: rotate(-1deg);
+}
+
+.soullink-panel__section-title::before {
+  content: '✦';
+  color: var(--sl-violet);
+  font-size: 12px;
+}
+
+.soullink-api__status {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-all;
+  color: var(--sl-blue);
+  background: rgba(255, 255, 255, 0.6);
+  border: 2px solid rgba(95, 157, 201, 0.85);
+  transform: rotate(0.8deg);
+}
+
+.soullink-api__status::before {
+  content: '✎';
+  margin-right: 4px;
+  font-size: 12px;
+}
+
+.soullink-api__status[data-state='busy'] {
+  color: #8a6d1f;
+  border-color: rgba(242, 193, 78, 0.95);
+  background: rgba(242, 193, 78, 0.22);
+}
+
+.soullink-api__status[data-state='busy']::after {
+  content: '···';
+  animation: soullink-blink 1s steps(1) infinite;
+}
+
+.soullink-api__status[data-state='ok'] {
+  color: #4f7a33;
+  border-color: rgba(123, 160, 91, 0.95);
+  background: rgba(123, 160, 91, 0.2);
+}
+
+.soullink-api__status[data-state='error'] {
+  color: #b03a48;
+  border-color: rgba(229, 107, 111, 0.95);
+  background: rgba(229, 107, 111, 0.18);
+}
+
+@keyframes soullink-blink {
+  50% { opacity: 0.35; }
+}
+
+.soullink-api__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.soullink-api__label {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+
+.soullink-input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 11px;
+  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
+  font-size: 13.5px;
+  font-family: var(--sl-font);
+  color: var(--sl-ink);
+  background: rgba(255, 255, 255, 0.75);
+  border: 2px solid var(--sl-ink-soft);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.soullink-input:focus {
+  border-color: var(--sl-violet);
+  background: #fff;
+  box-shadow: 3px 3px 0 rgba(124, 92, 191, 0.35);
+  transform: rotate(-0.4deg);
+}
+
+.soullink-input::placeholder {
+  font-style: italic;
+  opacity: 0.5;
+}
+
+select.soullink-input {
+  cursor: pointer;
+}
+
+.soullink-api__key-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.soullink-api__key-row .soullink-input {
+  flex: 1;
+}
+
+.soullink-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+  border-radius: 255px 10px 255px 10px / 10px 255px 10px 255px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--sl-ink);
+  background: rgba(255, 255, 255, 0.75);
+  border: 2px solid var(--sl-ink-soft);
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.soullink-icon-btn:hover {
+  background: rgba(124, 92, 191, 0.16);
+  border-color: var(--sl-violet);
+  transform: rotate(-8deg) scale(1.06);
+}
+
+.soullink-api__actions {
+  display: flex;
+}
+
+.soullink-btn {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 255px 14px 235px 14px / 14px 235px 14px 255px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--sl-font);
+  letter-spacing: 1px;
+  cursor: pointer;
+  color: #fff;
+  background:
+    radial-gradient(circle at 26% 24%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 42%),
+    var(--sl-violet);
+  border: 3px solid var(--sl-ink);
+  box-shadow: 4px 4px 0 var(--sl-ink);
+  transform: rotate(-0.7deg);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.soullink-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: rotate(0.7deg) translate(-1px, -1px);
+  box-shadow: 5px 6px 0 var(--sl-ink);
+}
+
+.soullink-btn:active:not(:disabled) {
+  filter: brightness(0.95);
+  transform: rotate(0.5deg) translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--sl-ink);
+}
+
+.soullink-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-style: dashed;
+  box-shadow: none;
+  transform: none;
+}
+
+.soullink-api__hint {
+  margin: 0;
+  padding-left: 8px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  opacity: 0.6;
+  border-left: 3px solid var(--sl-yellow);
+}
+
+/* ---------- 总前端：首页启动器 ---------- */
+.soullink-view {
+  display: none;
+}
+
+.soullink-view.is-active {
+  display: block;
+  animation: soullink-view-in 0.22s ease-out;
+}
+
+@keyframes soullink-view-in {
+  from { opacity: 0; transform: translateY(6px) rotate(0.6deg); }
+  to { opacity: 1; transform: translateY(0) rotate(0deg); }
+}
+
+.soullink-home__note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: rgba(124, 92, 191, 0.12);
+  border: 2px dashed rgba(124, 92, 191, 0.55);
+  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
+  transform: rotate(-0.8deg);
+}
+
+.soullink-home__hello {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.soullink-home__sub {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.soullink-home__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.soullink-home__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 10px 14px;
+  cursor: pointer;
+  font-family: var(--sl-font);
+  color: var(--sl-ink);
+  background: var(--sl-paper);
+  border: 3px solid var(--sl-ink);
+  box-shadow: 4px 5px 0 rgba(61, 43, 31, 0.22);
+  filter: url(#soullink-wobble);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.soullink-home__card--api {
+  border-radius: 235px 15px 255px 15px / 15px 255px 15px 235px;
+  transform: rotate(-1.6deg);
+}
+
+.soullink-home__card--log {
+  border-radius: 15px 235px 15px 255px / 255px 15px 235px 15px;
+  transform: rotate(1.4deg);
+}
+
+.soullink-home__card:hover {
+  transform: rotate(0deg) translateY(-3px) scale(1.03);
+  box-shadow: 6px 8px 0 rgba(61, 43, 31, 0.26);
+}
+
+.soullink-home__card:active {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.24);
+}
+
+.soullink-home__card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  font-size: 22px;
+  border-radius: 46% 54% 50% 50% / 54% 46% 54% 46%;
+  transform: rotate(-5deg);
+}
+
+.soullink-home__card--api .soullink-home__card-icon {
+  color: var(--sl-violet);
+  background: rgba(124, 92, 191, 0.16);
+  border: 2.5px dashed var(--sl-violet);
+}
+
+.soullink-home__card--log .soullink-home__card-icon {
+  color: var(--sl-green);
+  background: rgba(123, 160, 91, 0.16);
+  border: 2.5px dashed var(--sl-green);
+  transform: rotate(4deg);
+}
+
+.soullink-home__card-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.soullink-home__card-status {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
+  border: 2px solid rgba(95, 157, 201, 0.7);
+  color: var(--sl-blue);
+  background: rgba(255, 255, 255, 0.7);
+  transform: rotate(0.6deg);
+}
+
+.soullink-home__card-status[data-state='ok'] {
+  color: #4f7a33;
+  border-color: rgba(123, 160, 91, 0.9);
+  background: rgba(123, 160, 91, 0.18);
+}
+
+.soullink-home__card-status[data-state='error'] {
+  color: #b03a48;
+  border-color: rgba(229, 107, 111, 0.95);
+  background: rgba(229, 107, 111, 0.2);
+}
+
+/* ---------- 日志系统 ---------- */
+.soullink-panel__dialog.is-log-mode {
+  width: 540px;
+}
+
+.soullink-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.soullink-log__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.soullink-log__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font-family: var(--sl-font);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sl-ink);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid var(--sl-ink-soft);
+  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
+  transform: rotate(-0.6deg);
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.soullink-log__chip:hover {
+  transform: rotate(0.6deg) scale(1.04);
+}
+
+.soullink-log__chip.is-active {
+  color: #fff;
+  background: var(--sl-violet);
+  border-color: var(--sl-ink);
+}
+
+.soullink-log__chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  border-radius: 255px;
+  background: rgba(61, 43, 31, 0.12);
+}
+
+.soullink-log__chip.is-active .soullink-log__chip-count {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.soullink-log__tools {
+  display: flex;
+  gap: 8px;
+}
+
+.soullink-log__search {
+  flex: 1;
+}
+
+.soullink-log__max {
+  flex: none;
+  width: auto;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.soullink-log__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.soullink-log__action {
+  flex: 1;
+  min-width: 72px;
+  padding: 6px 8px;
+  font-family: var(--sl-font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--sl-ink);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px solid var(--sl-ink-soft);
+  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.soullink-log__action:hover {
+  background: rgba(124, 92, 191, 0.14);
+  border-color: var(--sl-violet);
+  transform: rotate(-1deg);
+}
+
+.soullink-log__action.is-active {
+  color: #fff;
+  background: var(--sl-violet);
+  border-color: var(--sl-ink);
+}
+
+.soullink-log__console {
+  position: relative;
+  background: #261c11;
+  border: 3px solid var(--sl-ink);
+  border-radius: 14px 255px 14px 255px / 255px 14px 255px 14px;
+  box-shadow: inset 4px 5px 0 rgba(0, 0, 0, 0.28);
+  filter: url(#soullink-wobble);
+  transform: rotate(0.4deg);
+}
+
+.soullink-log__list {
+  height: 300px;
+  max-height: 52vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 6px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  scroll-behavior: auto;
+}
+
+.soullink-log__list::-webkit-scrollbar {
+  width: 9px;
+}
+
+.soullink-log__list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 255px;
+}
+
+.soullink-log__row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 1px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.soullink-log__row:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.soullink-log__row.is-expanded {
+  white-space: normal;
+}
+
+.soullink-log__time {
+  flex: none;
+  color: #9c8f78;
+}
+
+.soullink-log__level {
+  flex: none;
+  width: 38px;
+  text-align: center;
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 3px;
+}
+
+.soullink-log__row--debug .soullink-log__level {
+  color: #8ec7e8;
+  background: rgba(143, 199, 232, 0.14);
+}
+
+.soullink-log__row--info .soullink-log__level {
+  color: #a8d68f;
+  background: rgba(168, 214, 143, 0.13);
+}
+
+.soullink-log__row--warn .soullink-log__level {
+  color: #f0c15c;
+  background: rgba(240, 193, 92, 0.16);
+}
+
+.soullink-log__row--error .soullink-log__level {
+  color: #ff9aa0;
+  background: rgba(255, 120, 128, 0.18);
+}
+
+.soullink-log__source {
+  flex: none;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #c9a6e8;
+  opacity: 0.9;
+}
+
+.soullink-log__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #d9cdb6;
+}
+
+.soullink-log__row--error .soullink-log__text {
+  color: #ffd7d9;
+}
+
+.soullink-log__row.is-expanded .soullink-log__text {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow: visible;
+}
+
+.soullink-log__note,
+.soullink-log__empty {
+  padding: 4px 6px 8px;
+  font-size: 10.5px;
+  font-style: italic;
+  color: #9c8f78;
+}
+
+.soullink-log__back {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  background: var(--sl-violet);
+  border: 2px solid var(--sl-ink);
+  border-radius: 255px 8px 235px 8px / 8px 235px 8px 255px;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.soullink-log__back:hover {
+  transform: translateY(-1px);
+}
+
+.soullink-log__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  opacity: 0.75;
+}
+
+.soullink-log__paused {
+  padding: 2px 8px;
+  color: #8a6d1f;
+  border-radius: 255px;
+  background: rgba(242, 193, 78, 0.25);
+  border: 1.5px dashed rgba(61, 43, 31, 0.4);
+}
+
+/* ---------- 面板底部 ---------- */
+.soullink-panel__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 12px;
+  font-size: 12px;
+  opacity: 0.8;
+  border-top: 2px dashed rgba(61, 43, 31, 0.3);
+}
+
+.soullink-panel__link {
+  color: var(--sl-violet);
+  text-decoration: underline wavy var(--sl-pink) 1.5px;
+  text-underline-offset: 3px;
+  transition: color 0.2s ease;
+}
+
+.soullink-panel__link:hover {
+  color: var(--sl-pink);
+}
