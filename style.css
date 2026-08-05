@@ -1124,3 +1124,395 @@ select.soullink-input {
 .soullink-panel__link:hover {
   color: var(--sl-pink);
 }
+/* ---------- 角色名单（注册系统） ---------- */
+.soullink-home__card--register {
+  border-radius: 235px 15px 255px 15px / 15px 255px 15px 235px;
+  transform: rotate(1.2deg);
+}
+
+.soullink-home__card--archive {
+  border-radius: 15px 235px 15px 255px / 255px 15px 235px 15px;
+  transform: rotate(-1.1deg);
+}
+
+.soullink-home__card--register .soullink-home__card-icon {
+  color: var(--sl-green);
+  background: rgba(123, 160, 91, 0.16);
+  border: 2.5px dashed var(--sl-green);
+  transform: rotate(3deg);
+}
+
+.soullink-home__card--archive .soullink-home__card-icon {
+  color: var(--sl-blue);
+  background: rgba(95, 157, 201, 0.16);
+  border: 2.5px dashed var(--sl-blue);
+  transform: rotate(-4deg);
+}
+
+.soullink-panel__dialog.is-archive-mode {
+  width: 600px;
+}
+
+.soullink-register {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.soullink-register__note,
+.soullink-archive__note {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  background: rgba(242, 193, 78, 0.18);
+  border: 2px dashed rgba(61, 43, 31, 0.45);
+  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
+  transform: rotate(-0.5deg);
+}
+
+.soullink-register__add {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.soullink-register__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.soullink-register__add .soullink-btn {
+  flex: none;
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+
+.soullink-register__meta,
+.soullink-archive__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+}
+
+.soullink-register__status,
+.soullink-register__chat,
+.soullink-archive__count,
+.soullink-archive__chat {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 255px;
+  color: var(--sl-blue);
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid rgba(95, 157, 201, 0.7);
+  transform: rotate(-0.5deg);
+}
+
+.soullink-register__chat,
+.soullink-archive__chat {
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+  color: #9c8f78;
+  border-style: dashed;
+}
+
+.soullink-register__list,
+.soullink-archive__list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 2px 4px 6px;
+}
+
+.soullink-register__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2.5px solid var(--sl-ink-soft);
+  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
+  transform: rotate(-0.4deg);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.soullink-register__item:hover {
+  background: rgba(255, 255, 255, 0.95);
+  transform: rotate(0.3deg);
+}
+
+.soullink-register__item-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 0.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soullink-register__unregister {
+  flex: none;
+  padding: 4px 11px;
+  font-family: var(--sl-font);
+  font-size: 11px;
+  font-weight: 700;
+  color: #b03a48;
+  cursor: pointer;
+  background: rgba(229, 107, 111, 0.14);
+  border: 2px solid rgba(229, 107, 111, 0.8);
+  border-radius: 255px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.soullink-register__unregister:hover {
+  background: rgba(229, 107, 111, 0.32);
+  transform: rotate(-2deg);
+}
+
+.soullink-register__empty,
+.soullink-archive__empty {
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 12.5px;
+  font-style: italic;
+  color: #9c8f78;
+  border: 2px dashed rgba(61, 43, 31, 0.3);
+  border-radius: 255px 14px 235px 14px / 14px 235px 14px 255px;
+}
+
+/* ---------- 档案系统 ---------- */
+.soullink-archive {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.soullink-archive__analyze-all {
+  flex: none;
+  min-width: 148px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+
+.soullink-archive__card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px 13px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 3px solid var(--sl-ink);
+  border-radius: 18px 255px 18px 255px / 255px 18px 255px 18px;
+  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.18);
+  transform: rotate(-0.4deg);
+}
+
+.soullink-archive__card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.soullink-archive__card-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soullink-archive__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  font-size: 11px;
+  border-radius: 255px;
+  color: var(--sl-blue);
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid rgba(95, 157, 201, 0.7);
+  transform: rotate(0.5deg);
+}
+
+.soullink-archive__status[data-state='busy'] {
+  color: #8a6d1f;
+  border-color: rgba(242, 193, 78, 0.95);
+  background: rgba(242, 193, 78, 0.22);
+}
+
+.soullink-archive__status[data-state='ok'] {
+  color: #4f7a33;
+  border-color: rgba(123, 160, 91, 0.9);
+  background: rgba(123, 160, 91, 0.18);
+}
+
+.soullink-archive__status[data-state='error'] {
+  color: #b03a48;
+  border-color: rgba(229, 107, 111, 0.95);
+  background: rgba(229, 107, 111, 0.2);
+}
+
+.soullink-archive__analyze,
+.soullink-archive__edit {
+  padding: 5px 11px;
+  font-family: var(--sl-font);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.soullink-archive__analyze {
+  color: #fff;
+  background: var(--sl-violet);
+  border: 2.5px solid var(--sl-ink);
+  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.35);
+}
+
+.soullink-archive__analyze:hover:not(:disabled) {
+  transform: rotate(-1.5deg) translateY(-1px);
+}
+
+.soullink-archive__analyze:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.soullink-archive__edit {
+  color: var(--sl-ink);
+  background: rgba(255, 255, 255, 0.85);
+  border: 2.5px solid var(--sl-ink-soft);
+}
+
+.soullink-archive__edit:hover {
+  background: rgba(242, 193, 78, 0.25);
+  border-color: var(--sl-ink);
+  transform: rotate(1.5deg);
+}
+
+.soullink-archive__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+.soullink-archive__field {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.soullink-archive__field-label {
+  flex: none;
+  font-weight: 700;
+  color: var(--sl-violet);
+}
+
+.soullink-archive__field-label::after {
+  content: '：';
+}
+
+.soullink-archive__field-value {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.soullink-archive__field-value.is-empty {
+  color: #b9ab92;
+  font-style: italic;
+}
+
+.soullink-archive__field--edit {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.soullink-archive__section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 2px dashed rgba(61, 43, 31, 0.25);
+}
+
+.soullink-archive__section-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--sl-pink);
+}
+
+.soullink-archive__section-title::before {
+  content: '✧ ';
+}
+
+.soullink-archive__section-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.soullink-archive__section-empty {
+  font-size: 12px;
+  font-style: italic;
+  color: #b9ab92;
+}
+
+.soullink-archive__section-edit {
+  min-height: 62px;
+  resize: vertical;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.soullink-archive__edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.soullink-archive__edit-actions .soullink-btn {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+
+.soullink-archive__meta {
+  font-size: 11px;
+  text-align: right;
+  opacity: 0.65;
+}
+.soullink-archive__analyze.is-cancelling {
+  background: var(--sl-pink);
+  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.35);
+}
+
+.soullink-archive__status[data-state='cancelled'] {
+  color: #7a6f5c;
+  border-color: rgba(61, 43, 31, 0.5);
+  background: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+}

@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.6.0';
+const MODULE_VERSION = '0.7.0';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -44,6 +44,23 @@ const PRESET_SAVE_ID = 'soullink-preset-save';
 const PRESET_RESET_ID = 'soullink-preset-reset';
 const PRESET_STATUS_ID = 'soullink-preset-status';
 const PRESET_COUNT_ID = 'soullink-preset-count';
+const REGISTER_VIEW_ID = 'soullink-register-view';
+const ARCHIVE_VIEW_ID = 'soullink-archive-view';
+const REGISTER_ICON_CLASS = 'fa-solid fa-user-plus';
+const ARCHIVE_ICON_CLASS = 'fa-solid fa-folder-open';
+const HOME_REGISTER_CARD_ID = 'soullink-home-register-card';
+const HOME_ARCHIVE_CARD_ID = 'soullink-home-archive-card';
+const HOME_REGISTER_STATUS_ID = 'soullink-home-register-status';
+const HOME_ARCHIVE_STATUS_ID = 'soullink-home-archive-status';
+const REGISTER_INPUT_ID = 'soullink-register-input';
+const REGISTER_ADD_ID = 'soullink-register-add';
+const REGISTER_LIST_ID = 'soullink-register-list';
+const REGISTER_STATUS_ID = 'soullink-register-status';
+const REGISTER_CHAT_ID = 'soullink-register-chat';
+const ARCHIVE_ANALYZE_ALL_ID = 'soullink-archive-analyze-all';
+const ARCHIVE_LIST_ID = 'soullink-archive-list';
+const ARCHIVE_STATUS_ID = 'soullink-archive-status';
+const ARCHIVE_CHAT_ID = 'soullink-archive-chat';
 
 const SPHERE_POSITION_KEY = `${MODULE_NAME}_floating_sphere_position`;
 const SPHERE_DRAG_THRESHOLD = 8;
@@ -57,6 +74,8 @@ const MODEL_LIST_TIMEOUT_MS = 20000;
 const LOG_MAX_ENTRIES_DEFAULT = 2000;
 const LOG_RENDER_CAP = 1000;
 const LOG_SEARCH_DEBOUNCE_MS = 120;
+const CHAT_COMPLETION_TIMEOUT_MS = 60000;
+const ARCHIVE_RECENT_MESSAGE_COUNT = 4;
 const LOG_LEVELS = Object.freeze(['debug', 'info', 'warn', 'error']);
 const HOST_EVENTS_TO_LOG = Object.freeze([
   'appReady',
@@ -80,6 +99,18 @@ const PRESET_META = Object.freeze({
   roleplaySystem: Object.freeze({ label: '角色扮演', title: '角色扮演系统提示词', description: '子 agent 以指定角色视角单独扮演，输出内心独白（含信息差与 NPC 行为逻辑）。' }),
   roleplayPreScreen: Object.freeze({ label: '角色扮演预筛', title: '角色扮演预筛系统提示词', description: '子 agent 预筛本轮哪些已注册角色会开口或有戏份。' }),
 });
+
+const ARCHIVE_SCALAR_FIELDS = Object.freeze(['name', 'age', 'gender', 'occupation']);
+const ARCHIVE_SCALAR_LABELS = Object.freeze({ name: '姓名', age: '年龄', gender: '性别', occupation: '职业' });
+const ARCHIVE_SECTIONS = Object.freeze([
+  Object.freeze({ key: 'personality', label: '性格', prefix: 'p', hint: 'MBTI 类型标签，一行一个' }),
+  Object.freeze({ key: 'worldview', label: '世界观', prefix: 'w', hint: '该角色眼中的世界运转规则，一条一行' }),
+  Object.freeze({ key: 'family', label: '家庭背景', prefix: 'f', hint: '出身、家人、成长环境，一条一行' }),
+  Object.freeze({ key: 'relationships', label: '人际关系', prefix: 'r', hint: '与谁是什么关系，一条一行' }),
+  Object.freeze({ key: 'memory', label: '记忆', prefix: 'm', hint: '亲历 / 被告知 / 目击的事实，一条一行' }),
+]);
+const ARCHIVE_SECTION_KEYS = Object.freeze(ARCHIVE_SECTIONS.map((section) => section.key));
+const ARCHIVE_DEFAULT_KEY = 'default';
 
 const BOOTSTRAP_RUNTIME_KEY = '__soullink_bootstrapped__';
 const MENU_RECOVERY_OBSERVER_KEY = '__soullink_menu_recovery_observer__';
@@ -252,6 +283,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   logMaxEntries: LOG_MAX_ENTRIES_DEFAULT,
   logAutoScroll: true,
   prompts: DEFAULT_PROMPTS,
+  archives: {},
 });
 
 const FALLBACK_SETTINGS_STORE = new WeakMap();
@@ -300,6 +332,10 @@ function getSettings(ctx) {
   }
   if (!Array.isArray(settings.modelOptions)) {
     settings.modelOptions = [];
+    shouldSave = true;
+  }
+  if (!settings.archives || typeof settings.archives !== 'object' || Array.isArray(settings.archives)) {
+    settings.archives = {};
     shouldSave = true;
   }
   const prompts = settings.prompts;
@@ -384,15 +420,17 @@ function getHostProxyHeaders(extraHeaders = {}) {
   return headers;
 }
 
-function buildHostProxyConfig(apiBase, settings) {
+function buildHostProxyConfig(apiBase, settings, extraBody = null) {
   const apiKey = String(settings?.apiKey || '').trim();
-  return {
+  const config = {
     chat_completion_source: 'custom',
     custom_url: apiBase,
     reverse_proxy: apiBase,
     proxy_password: apiKey,
     custom_include_headers: apiKey ? `Authorization: Bearer ${apiKey}` : '',
   };
+  if (extraBody && typeof extraBody === 'object') Object.assign(config, extraBody);
+  return config;
 }
 
 function shouldFallbackFromHostProxy(responseText, status) {
@@ -403,18 +441,44 @@ function shouldFallbackFromHostProxy(responseText, status) {
     || /cannot\s+post|not\s+found|no\s+route|ENOENT/i.test(String(responseText || ''));
 }
 
+function looksLikeJson(text) {
+  const trimmed = String(text || '').trim();
+  return trimmed.startsWith('{') || trimmed.startsWith('[');
+}
+
 async function fetchText(url, options = {}) {
-  const { timeoutMs, ...fetchOptions } = options;
+  const { timeoutMs, signal, ...fetchOptions } = options;
   const limitMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_API_TIMEOUT_MS;
   const controller = limitMs > 0 && typeof AbortController === 'function' ? new AbortController() : null;
   let timer = null;
+  let externalAbortHandler = null;
   if (controller) {
-    fetchOptions.signal = controller.signal;
+    // 超时信号与外部取消信号合并：支持 AbortSignal.any 时直接合并，
+    // 否则把外部取消转发到超时控制器，保证两者都能中断 fetch。
+    if (signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
+      fetchOptions.signal = AbortSignal.any([controller.signal, signal]);
+    } else {
+      fetchOptions.signal = controller.signal;
+      if (signal) {
+        if (signal.aborted) {
+          controller.abort();
+        } else {
+          externalAbortHandler = () => {
+            try {
+              controller.abort();
+            } catch {}
+          };
+          signal.addEventListener('abort', externalAbortHandler, { once: true });
+        }
+      }
+    }
     timer = setTimeout(() => {
       try {
         controller.abort();
       } catch {}
     }, limitMs);
+  } else if (signal) {
+    fetchOptions.signal = signal;
   }
   try {
     const response = await fetch(url, fetchOptions);
@@ -422,6 +486,7 @@ async function fetchText(url, options = {}) {
     return { response, responseText };
   } finally {
     if (timer) clearTimeout(timer);
+    if (externalAbortHandler && signal) signal.removeEventListener('abort', externalAbortHandler);
   }
 }
 
@@ -796,6 +861,7 @@ function openPanel() {
   logApp('debug', '面板已打开');
   showPanelView(HOME_VIEW_ID);
   refreshHomePresetStatus();
+  refreshHomeStatuses();
   panel.classList.add('is-open');
   panel.setAttribute('aria-hidden', 'false');
   ensurePanelPosition(panel);
@@ -823,10 +889,13 @@ const PANEL_VIEW_TITLES = Object.freeze({
   [API_VIEW_ID]: 'API 连接',
   [LOG_VIEW_ID]: '日志系统',
   [PRESET_VIEW_ID]: '预设',
+  [REGISTER_VIEW_ID]: '角色名单',
+  [ARCHIVE_VIEW_ID]: '档案系统',
 });
 const PANEL_WIDE_MODES = Object.freeze({
   [LOG_VIEW_ID]: 'is-log-mode',
   [PRESET_VIEW_ID]: 'is-preset-mode',
+  [ARCHIVE_VIEW_ID]: 'is-archive-mode',
 });
 
 function showPanelView(viewId) {
@@ -852,6 +921,14 @@ function showPanelView(viewId) {
     renderPresetEditor();
     logApp('debug', '打开预设视图');
   }
+  if (viewId === REGISTER_VIEW_ID) {
+    renderRegisterList();
+    logApp('debug', '打开角色名单视图');
+  }
+  if (viewId === ARCHIVE_VIEW_ID) {
+    renderArchiveList();
+    logApp('debug', '打开档案系统视图');
+  }
   const back = document.getElementById(PANEL_BACK_ID);
   if (back) back.style.visibility = viewId === HOME_VIEW_ID ? 'hidden' : 'visible';
   const title = document.getElementById(PANEL_TITLE_ID);
@@ -865,6 +942,8 @@ function initPanelViews(panel) {
   document.getElementById(HOME_API_CARD_ID)?.addEventListener('click', () => showPanelView(API_VIEW_ID));
   document.getElementById(HOME_LOG_CARD_ID)?.addEventListener('click', () => showPanelView(LOG_VIEW_ID));
   document.getElementById(HOME_PRESET_CARD_ID)?.addEventListener('click', () => showPanelView(PRESET_VIEW_ID));
+  document.getElementById(HOME_REGISTER_CARD_ID)?.addEventListener('click', () => showPanelView(REGISTER_VIEW_ID));
+  document.getElementById(HOME_ARCHIVE_CARD_ID)?.addEventListener('click', () => showPanelView(ARCHIVE_VIEW_ID));
   panel.dataset.viewsReady = 'true';
 }
 
@@ -919,6 +998,16 @@ function createPanel() {
               <span class="soullink-home__card-icon"><span class="${PRESET_ICON_CLASS}"></span></span>
               <span class="soullink-home__card-title">预设</span>
               <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__card-status" data-state="idle">默认配置</span>
+            </button>
+            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色名单管理">
+              <span class="soullink-home__card-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
+              <span class="soullink-home__card-title">角色名单</span>
+              <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无角色</span>
+            </button>
+            <button type="button" id="${HOME_ARCHIVE_CARD_ID}" class="soullink-home__card soullink-home__card--archive" title="打开档案系统">
+              <span class="soullink-home__card-icon"><span class="${ARCHIVE_ICON_CLASS}"></span></span>
+              <span class="soullink-home__card-title">档案系统</span>
+              <span id="${HOME_ARCHIVE_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无档案</span>
             </button>
           </div>
         </section>
@@ -1008,6 +1097,31 @@ function createPanel() {
             </div>
           </div>
         </section>
+        <section id="${REGISTER_VIEW_ID}" class="soullink-view" aria-hidden="true">
+          <div class="soullink-register">
+            <p class="soullink-register__note">输入角色名字，点击「注册当前角色」即可把角色加入名单。名单与当前聊天绑定，注销角色会删除其档案数据。</p>
+            <div class="soullink-register__add">
+              <input id="${REGISTER_INPUT_ID}" class="soullink-input soullink-register__input" type="text" placeholder="输入角色名字…" autocomplete="off" spellcheck="false" />
+              <button type="button" id="${REGISTER_ADD_ID}" class="soullink-btn">＋ 注册当前角色</button>
+            </div>
+            <div class="soullink-register__meta">
+              <span id="${REGISTER_STATUS_ID}" class="soullink-register__status">0 个角色</span>
+              <span id="${REGISTER_CHAT_ID}" class="soullink-register__chat"></span>
+            </div>
+            <div id="${REGISTER_LIST_ID}" class="soullink-register__list"></div>
+          </div>
+        </section>
+        <section id="${ARCHIVE_VIEW_ID}" class="soullink-view" aria-hidden="true">
+          <div class="soullink-archive">
+            <p class="soullink-archive__note">档案与当前聊天绑定，展示已注册角色的信息。点击「分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话配合「档案系统」提示词更新档案；多个角色可并发分析。</p>
+            <div class="soullink-archive__toolbar">
+              <span id="${ARCHIVE_STATUS_ID}" class="soullink-archive__count">0 个档案</span>
+              <span id="${ARCHIVE_CHAT_ID}" class="soullink-archive__chat"></span>
+              <button type="button" id="${ARCHIVE_ANALYZE_ALL_ID}" class="soullink-btn soullink-archive__analyze-all">🔮 分析全部角色</button>
+            </div>
+            <div id="${ARCHIVE_LIST_ID}" class="soullink-archive__list"></div>
+          </div>
+        </section>
       </div>
       <div class="soullink-panel__footer">
         <span>v${MODULE_VERSION}</span>
@@ -1021,6 +1135,8 @@ function createPanel() {
   initPanelViews(panel);
   initLogView(panel);
   initPresetSection(panel);
+  initRegisterSection(panel);
+  initArchiveSection(panel);
   panel.querySelector('.soullink-panel__close')?.addEventListener('click', closePanel);
   if (!globalThis[ESC_KEY_HANDLER_KEY]) {
     globalThis[ESC_KEY_HANDLER_KEY] = (event) => {
@@ -1812,6 +1928,843 @@ function initPresetSection(panel) {
 initLogCapture();
 exposeLogApi();
 
+// ---------- 注册系统与档案系统：数据模型 ----------
+const archiveAnalysisState = {}; // 角色名 -> { state: 'idle'|'busy'|'ok'|'error', message }
+const archiveEditState = {};     // 角色名 -> true（处于编辑态）
+
+function getCurrentChatKey(ctx) {
+  if (!ctx) return ARCHIVE_DEFAULT_KEY;
+  if (ctx.chatId) return String(ctx.chatId);
+  const characterId = ctx.characterId !== undefined && ctx.characterId !== null ? String(ctx.characterId) : 'npc';
+  const groupId = ctx.groupId !== undefined && ctx.groupId !== null ? String(ctx.groupId) : '';
+  return groupId ? `g${groupId}` : characterId;
+}
+
+function getCurrentChatLabel(ctx) {
+  if (!ctx) return '未绑定聊天';
+  return String(ctx.chatTitle || getCurrentChatKey(ctx));
+}
+
+function getArchiveStore(ctx) {
+  const settings = ctx ? getSettings(ctx) : null;
+  if (!settings) return null;
+  const chatKey = getCurrentChatKey(ctx);
+  if (!settings.archives[chatKey] || typeof settings.archives[chatKey] !== 'object' || Array.isArray(settings.archives[chatKey])) {
+    settings.archives[chatKey] = {};
+  }
+  return settings.archives[chatKey];
+}
+
+function getRoster(ctx) {
+  return getArchiveStore(ctx);
+}
+
+function getArchiveForRender(name) {
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : {};
+  return roster?.[name] || null;
+}
+
+function createEmptyArchive(name) {
+  return {
+    fields: { name: String(name || ''), age: '', gender: '', occupation: '' },
+    personality: [],
+    worldview: [],
+    family: [],
+    relationships: [],
+    memory: [],
+    updatedAt: 0,
+  };
+}
+
+// ---------- 注册系统：视图 UI ----------
+function registerCharacter(name) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const trimmed = String(name || '').trim();
+  if (!trimmed) {
+    globalThis.toastr?.warning?.('请输入角色名字', `[${MODULE_NAME}]`);
+    return;
+  }
+  const roster = getRoster(ctx);
+  if (!roster) return;
+  if (roster[trimmed]) {
+    globalThis.toastr?.warning?.(`「${trimmed}」已在名单中`, `[${MODULE_NAME}]`);
+    return;
+  }
+  roster[trimmed] = createEmptyArchive(trimmed);
+  saveSettingsImmediate(ctx);
+  logApp('info', '角色已注册', trimmed);
+  globalThis.toastr?.success?.(`「${trimmed}」已加入名单`, `[${MODULE_NAME}]`);
+  renderRegisterList();
+  renderArchiveList();
+  refreshHomeStatuses();
+}
+
+function unregisterCharacter(name) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const roster = getRoster(ctx);
+  if (!roster || !roster[name]) return;
+  const confirmed = globalThis.confirm?.(`确定注销「${name}」？该角色的档案数据将被删除。`);
+  if (!confirmed) return;
+  cancelCharacterAnalysis(name);
+  delete roster[name];
+  saveSettingsImmediate(ctx);
+  logApp('info', '角色已注销', name);
+  globalThis.toastr?.info?.(`「${name}」已注销`, `[${MODULE_NAME}]`);
+  renderRegisterList();
+  renderArchiveList();
+  refreshHomeStatuses();
+}
+
+function renderRegisterList() {
+  const list = document.getElementById(REGISTER_LIST_ID);
+  if (!list) return;
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : {};
+  const names = Object.keys(roster || {}).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  const status = document.getElementById(REGISTER_STATUS_ID);
+  if (status) status.textContent = `${names.length} 个角色`;
+  const chatNode = document.getElementById(REGISTER_CHAT_ID);
+  if (chatNode) chatNode.textContent = `绑定聊天：${getCurrentChatLabel(ctx)}`;
+  list.textContent = '';
+  if (names.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'soullink-register__empty';
+    empty.textContent = '还没有注册任何角色 —— 输入名字即可加入名单。';
+    list.appendChild(empty);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const name of names) {
+    const item = document.createElement('div');
+    item.className = 'soullink-register__item';
+    const nameNode = document.createElement('span');
+    nameNode.className = 'soullink-register__item-name';
+    nameNode.textContent = name;
+    const unregister = document.createElement('button');
+    unregister.type = 'button';
+    unregister.className = 'soullink-register__unregister';
+    unregister.textContent = '注销';
+    unregister.title = `注销「${name}」并删除其档案数据`;
+    unregister.addEventListener('click', () => unregisterCharacter(name));
+    item.append(nameNode, unregister);
+    fragment.appendChild(item);
+  }
+  list.appendChild(fragment);
+}
+
+function initRegisterSection(panel) {
+  if (!panel || panel.dataset.registerReady === 'true') return;
+  const submit = () => {
+    const input = document.getElementById(REGISTER_INPUT_ID);
+    registerCharacter(input?.value || '');
+    if (input) input.value = '';
+    input?.focus?.();
+  };
+  document.getElementById(REGISTER_ADD_ID)?.addEventListener('click', submit);
+  document.getElementById(REGISTER_INPUT_ID)?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submit();
+    }
+  });
+  renderRegisterList();
+  panel.dataset.registerReady = 'true';
+  logApp('info', '注册系统已就绪');
+}
+
+// ---------- 档案系统：视图 UI ----------
+function formatArchiveTime(timestamp) {
+  if (!timestamp) return '尚未分析';
+  const date = new Date(timestamp);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function findArchiveCard(name) {
+  const list = document.getElementById(ARCHIVE_LIST_ID);
+  if (!list) return null;
+  for (const card of list.querySelectorAll('.soullink-archive__card')) {
+    if (card.dataset.name === name) return card;
+  }
+  return null;
+}
+
+function renderArchiveCard(name) {
+  const list = document.getElementById(ARCHIVE_LIST_ID);
+  if (!list) return;
+  const archive = getArchiveForRender(name);
+  if (!archive) {
+    findArchiveCard(name)?.remove();
+    return;
+  }
+  const built = buildArchiveCard(name, archive);
+  const existing = findArchiveCard(name);
+  if (existing) existing.replaceWith(built);
+  else list.appendChild(built);
+}
+
+function buildArchiveCard(name, archive) {
+  const card = document.createElement('div');
+  card.className = 'soullink-archive__card';
+  card.dataset.name = name;
+
+  const head = document.createElement('div');
+  head.className = 'soullink-archive__card-head';
+  const nameNode = document.createElement('span');
+  nameNode.className = 'soullink-archive__card-name';
+  nameNode.textContent = name;
+
+  const state = archiveAnalysisState[name] || { state: 'idle', message: '' };
+  const status = document.createElement('span');
+  status.className = 'soullink-archive__status';
+  status.dataset.state = state.state;
+  status.textContent = state.message || '待分析';
+
+  const analyzeBtn = document.createElement('button');
+  analyzeBtn.type = 'button';
+  analyzeBtn.className = 'soullink-archive__analyze';
+  const busy = state.state === 'busy';
+  analyzeBtn.classList.toggle('is-cancelling', busy);
+  analyzeBtn.textContent = busy ? '⏹ 取消分析角色' : '🔮 分析本角色';
+  analyzeBtn.title = busy ? '点击中断该角色的分析请求' : '用最近对话配合「档案系统」提示词更新该角色档案';
+  analyzeBtn.addEventListener('click', () => {
+    if (archiveAnalysisState[name]?.state === 'busy') cancelCharacterAnalysis(name);
+    else analyzeCharacter(name);
+  });
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'soullink-archive__edit';
+  editBtn.textContent = archiveEditState[name] ? '✏️ 编辑中' : '✏️ 编辑';
+  editBtn.addEventListener('click', () => toggleArchiveEdit(name));
+
+  head.append(nameNode, status, analyzeBtn, editBtn);
+  card.appendChild(head);
+  card.appendChild(archiveEditState[name]
+    ? buildArchiveEditBody(name, archive)
+    : buildArchiveDisplayBody(archive));
+  return card;
+}
+
+function buildArchiveDisplayBody(archive) {
+  const body = document.createElement('div');
+  body.className = 'soullink-archive__body';
+
+  const fields = document.createElement('div');
+  fields.className = 'soullink-archive__fields';
+  for (const key of ARCHIVE_SCALAR_FIELDS) {
+    const field = document.createElement('div');
+    field.className = 'soullink-archive__field';
+    const label = document.createElement('span');
+    label.className = 'soullink-archive__field-label';
+    label.textContent = ARCHIVE_SCALAR_LABELS[key];
+    const value = document.createElement('span');
+    value.className = 'soullink-archive__field-value';
+    value.textContent = String(archive.fields[key] || '');
+    if (!value.textContent) value.classList.add('is-empty');
+    field.append(label, value);
+    fields.appendChild(field);
+  }
+  body.appendChild(fields);
+
+  for (const section of ARCHIVE_SECTIONS) {
+    const block = document.createElement('div');
+    block.className = 'soullink-archive__section';
+    const title = document.createElement('div');
+    title.className = 'soullink-archive__section-title';
+    title.textContent = section.label;
+    block.appendChild(title);
+    const items = Array.isArray(archive[section.key]) ? archive[section.key] : [];
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'soullink-archive__section-empty';
+      empty.textContent = '（暂无）';
+      block.appendChild(empty);
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'soullink-archive__section-items';
+      for (const item of items) {
+        const li = document.createElement('li');
+        li.className = 'soullink-archive__section-item';
+        li.textContent = String(item.content || '');
+        list.appendChild(li);
+      }
+      block.appendChild(list);
+    }
+    body.appendChild(block);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'soullink-archive__meta';
+  meta.textContent = `最后更新：${formatArchiveTime(archive.updatedAt)}`;
+  body.appendChild(meta);
+  return body;
+}
+
+function buildArchiveEditBody(name, archive) {
+  const body = document.createElement('div');
+  body.className = 'soullink-archive__body';
+
+  const fields = document.createElement('div');
+  fields.className = 'soullink-archive__fields';
+  for (const key of ARCHIVE_SCALAR_FIELDS) {
+    const field = document.createElement('label');
+    field.className = 'soullink-archive__field soullink-archive__field--edit';
+    const label = document.createElement('span');
+    label.className = 'soullink-archive__field-label';
+    label.textContent = ARCHIVE_SCALAR_LABELS[key];
+    const input = document.createElement('input');
+    input.className = 'soullink-input';
+    input.type = 'text';
+    input.value = String(archive.fields[key] || '');
+    input.dataset.fieldKey = key;
+    input.placeholder = `填写${ARCHIVE_SCALAR_LABELS[key]}…`;
+    field.append(label, input);
+    fields.appendChild(field);
+  }
+  body.appendChild(fields);
+
+  for (const section of ARCHIVE_SECTIONS) {
+    const block = document.createElement('div');
+    block.className = 'soullink-archive__section';
+    const title = document.createElement('div');
+    title.className = 'soullink-archive__section-title';
+    title.textContent = section.label;
+    const textarea = document.createElement('textarea');
+    textarea.className = 'soullink-input soullink-archive__section-edit';
+    textarea.dataset.sectionKey = section.key;
+    textarea.placeholder = section.hint;
+    const items = Array.isArray(archive[section.key]) ? archive[section.key] : [];
+    textarea.value = items.map((item) => item.content).join('\n');
+    block.append(title, textarea);
+    body.appendChild(block);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'soullink-archive__edit-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'soullink-btn soullink-btn--ghost';
+  cancel.textContent = '取消';
+  cancel.addEventListener('click', () => {
+    delete archiveEditState[name];
+    renderArchiveCard(name);
+  });
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'soullink-btn';
+  save.textContent = '💾 保存修改';
+  save.addEventListener('click', () => saveArchiveEdit(name, body));
+  actions.append(cancel, save);
+  body.appendChild(actions);
+  return body;
+}
+
+function toggleArchiveEdit(name) {
+  if (!getArchiveForRender(name)) return;
+  if (archiveEditState[name]) delete archiveEditState[name];
+  else archiveEditState[name] = true;
+  renderArchiveCard(name);
+}
+
+function saveArchiveEdit(name, body) {
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : null;
+  const archive = roster?.[name];
+  if (!roster || !archive) return;
+  body.querySelectorAll('input[data-field-key]').forEach((input) => {
+    const key = input.dataset.fieldKey;
+    if (ARCHIVE_SCALAR_FIELDS.includes(key)) archive.fields[key] = input.value.trim();
+  });
+  body.querySelectorAll('textarea[data-section-key]').forEach((textarea) => {
+    const key = textarea.dataset.sectionKey;
+    if (ARCHIVE_SECTION_KEYS.includes(key)) {
+      archive[key] = rebuildSectionItems(archive[key], textarea.value);
+    }
+  });
+  archive.updatedAt = Date.now();
+  delete archiveEditState[name];
+  saveSettingsImmediate(ctx);
+  logApp('info', '档案已手动修改', name);
+  globalThis.toastr?.success?.(`「${name}」档案已保存`, `[${MODULE_NAME}]`);
+  renderArchiveCard(name);
+  refreshHomeStatuses();
+}
+
+function rebuildSectionItems(items, text) {
+  const source = Array.isArray(items) ? items : [];
+  const lines = String(text || '').split('\n').map((line) => line.trim()).filter(Boolean);
+  const used = new Set();
+  const next = [];
+  for (const line of lines) {
+    let matched = null;
+    for (let i = 0; i < source.length; i += 1) {
+      if (used.has(i)) continue;
+      if (String(source[i].content || '') === line) {
+        matched = source[i];
+        used.add(i);
+        break;
+      }
+    }
+    if (matched) next.push(matched);
+    else next.push({ id: nextSectionItemId(null, next), content: line });
+  }
+  return next;
+}
+
+function nextSectionItemId(section, items) {
+  let max = 0;
+  for (const item of items) {
+    const match = String(item.id || '').match(/(\d+)$/);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return `${section ? section.prefix : 'i'}${max + 1}`;
+}
+
+function renderArchiveList() {
+  const list = document.getElementById(ARCHIVE_LIST_ID);
+  if (!list) return;
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : {};
+  const names = Object.keys(roster || {}).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  const chatNode = document.getElementById(ARCHIVE_CHAT_ID);
+  if (chatNode) chatNode.textContent = `绑定聊天：${getCurrentChatLabel(ctx)}`;
+  const status = document.getElementById(ARCHIVE_STATUS_ID);
+  if (status) status.textContent = `${names.length} 个档案`;
+  renderAnalyzeAllButton();
+  list.textContent = '';
+  if (names.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'soullink-archive__empty';
+    empty.textContent = '名单还是空的 —— 先去「角色名单」注册角色吧。';
+    list.appendChild(empty);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const name of names) fragment.appendChild(buildArchiveCard(name, roster[name]));
+  list.appendChild(fragment);
+}
+
+function isAnyAnalysisBusy() {
+  return Object.values(archiveAnalysisState).some((state) => state?.state === 'busy');
+}
+
+function renderAnalyzeAllButton() {
+  const button = document.getElementById(ARCHIVE_ANALYZE_ALL_ID);
+  if (!button) return;
+  button.textContent = isAnyAnalysisBusy() ? '⏹ 取消分析全部角色' : '🔮 分析全部角色';
+}
+
+function cancelCharacterAnalysis(name) {
+  const state = archiveAnalysisState[name];
+  if (!state || state.state !== 'busy') return;
+  try {
+    state.controller?.abort?.();
+  } catch {}
+  archiveAnalysisState[name] = { state: 'cancelled', message: '已取消' };
+  renderArchiveCard(name);
+  renderAnalyzeAllButton();
+  refreshHomeStatuses();
+  logApp('info', '取消角色分析', name);
+}
+
+async function analyzeAllCharacters() {
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : {};
+  const names = Object.keys(roster || {});
+  if (names.length === 0) {
+    globalThis.toastr?.warning?.('名单里还没有角色', `[${MODULE_NAME}]`);
+    return;
+  }
+  if (isAnyAnalysisBusy()) {
+    // 「取消分析全部角色」：中断所有在途的角色分析
+    for (const name of names) cancelCharacterAnalysis(name);
+    logApp('info', '取消全部角色分析');
+    globalThis.toastr?.info?.('已取消全部角色分析', `[${MODULE_NAME}]`);
+    return;
+  }
+  const results = await Promise.allSettled(names.map((name) => analyzeCharacter(name)));
+  const counts = { ok: 0, error: 0, cancelled: 0, skipped: 0, busy: 0 };
+  for (const result of results) {
+    const outcome = result.status === 'fulfilled' ? String(result.value || 'ok') : 'error';
+    counts[outcome] = (counts[outcome] || 0) + 1;
+  }
+  const parts = [];
+  if (counts.ok > 0) parts.push(`${counts.ok} 成功`);
+  if (counts.error > 0) parts.push(`${counts.error} 失败`);
+  if (counts.cancelled > 0) parts.push(`${counts.cancelled} 取消`);
+  if (counts.busy > 0) parts.push(`${counts.busy} 进行中`);
+  logApp('info', '全部角色分析结束', parts.join('，') || '无角色可分析');
+  if (counts.error > 0) {
+    globalThis.toastr?.warning?.(`分析完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+  } else if (counts.cancelled > 0 && counts.ok === 0) {
+    globalThis.toastr?.info?.(`分析已取消：${parts.join('，')}`, `[${MODULE_NAME}]`);
+  } else {
+    globalThis.toastr?.success?.(`分析完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+  }
+  renderAnalyzeAllButton();
+}
+
+function initArchiveSection(panel) {
+  if (!panel || panel.dataset.archiveReady === 'true') return;
+  document.getElementById(ARCHIVE_ANALYZE_ALL_ID)?.addEventListener('click', analyzeAllCharacters);
+  renderAnalyzeAllButton();
+  renderArchiveList();
+  panel.dataset.archiveReady = 'true';
+  logApp('info', '档案系统已就绪');
+}
+
+function refreshHomeStatuses() {
+  refreshHomeRegisterStatus();
+  refreshHomeArchiveStatus();
+}
+
+function refreshHomeRegisterStatus() {
+  const status = document.getElementById(HOME_REGISTER_STATUS_ID);
+  if (!status) return;
+  try {
+    const ctx = getContextSafe();
+    const roster = ctx ? getRoster(ctx) : {};
+    const count = Object.keys(roster || {}).length;
+    status.textContent = count > 0 ? `${count} 个角色` : '暂无角色';
+    status.dataset.state = count > 0 ? 'ok' : 'idle';
+  } catch (error) {
+    status.textContent = '暂无角色';
+    status.dataset.state = 'idle';
+  }
+}
+
+function refreshHomeArchiveStatus() {
+  const status = document.getElementById(HOME_ARCHIVE_STATUS_ID);
+  if (!status) return;
+  try {
+    const ctx = getContextSafe();
+    const roster = ctx ? getRoster(ctx) : {};
+    const names = Object.keys(roster || {});
+    const analyzed = names.filter((name) => roster[name]?.updatedAt).length;
+    status.textContent = names.length > 0 ? `${analyzed}/${names.length} 已分析` : '暂无档案';
+    status.dataset.state = analyzed > 0 ? 'ok' : 'idle';
+  } catch (error) {
+    status.textContent = '暂无档案';
+    status.dataset.state = 'idle';
+  }
+}
+
+function refreshChatBoundViews() {
+  refreshHomeStatuses();
+  const activeView = document.querySelector('.soullink-view.is-active');
+  if (!activeView) return;
+  if (activeView.id === REGISTER_VIEW_ID) renderRegisterList();
+  if (activeView.id === ARCHIVE_VIEW_ID) renderArchiveList();
+}
+
+// ---------- 档案分析：AI 调用 ----------
+function getRecentMessages(count) {
+  const ctx = getContextSafe();
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  return chat.slice(-count).map((message) => ({
+    role: message?.is_user ? 'user' : (message?.is_system ? 'system' : 'assistant'),
+    name: String(message?.name || ''),
+    content: String(message?.mes || ''),
+  }));
+}
+
+function buildWorldInfoText(recentMessages) {
+  const ctx = getContextSafe();
+  const worldInfo = ctx?.worldInfo;
+  if (!worldInfo) return '';
+  const entries = worldInfo instanceof Map
+    ? Array.from(worldInfo.values())
+    : Object.values(worldInfo);
+  const recentText = recentMessages.map((message) => message.content).join('\n');
+  const active = [];
+  for (const entry of entries) {
+    if (!entry || entry.enabled === false) continue;
+    const content = String(entry.content || '').trim();
+    if (!content) continue;
+    const keys = String(entry.keys || '').split(',').map((key) => key.trim()).filter(Boolean);
+    if (entry.constant === true || keys.length === 0 || keys.some((key) => recentText.includes(key))) {
+      active.push(content);
+    }
+  }
+  if (active.length === 0) return '';
+  return `<World_Info>\n${active.join('\n\n')}\n</World_Info>`;
+}
+
+function serializeArchiveForPrompt(archive) {
+  const fields = {};
+  for (const key of ARCHIVE_SCALAR_FIELDS) fields[key] = String(archive.fields[key] || '');
+  const profile = { fields };
+  for (const section of ARCHIVE_SECTIONS) {
+    profile[section.key] = (Array.isArray(archive[section.key]) ? archive[section.key] : [])
+      .map((item) => ({ id: String(item.id || ''), content: String(item.content || '') }));
+  }
+  return profile;
+}
+
+function buildArchiveAnalysisMessages(name, archive, prompt) {
+  const recentMessages = getRecentMessages(ARCHIVE_RECENT_MESSAGE_COUNT);
+  const payload = {
+    character: name,
+    current_profile: serializeArchiveForPrompt(archive),
+    recent_messages: recentMessages,
+    world_info_background: buildWorldInfoText(recentMessages),
+    turn_index: (getContextSafe()?.chat?.length) || 0,
+  };
+  const userContent = `请依据约定输出 JSON，输入如下：\n\n${JSON.stringify(payload, null, 2)}`;
+  return [
+    { role: 'system', content: prompt },
+    { role: 'user', content: userContent },
+  ];
+}
+
+// TauriTavern 宿主代理的对话接口是 /api/backends/chat-completions/generate，
+// 请求体与 SillyTavern 的 /chat-completions 不同：custom_include_headers 的值
+// 需带引号（`Authorization: "Bearer xxx"`）。参数格式参考 st-chatu8 扩展。
+function buildHostProxyChatConfig(apiBase, settings, body) {
+  const apiKey = String(settings?.apiKey || '').trim();
+  return {
+    chat_completion_source: 'custom',
+    custom_url: apiBase,
+    custom_include_headers: apiKey ? `Authorization: "Bearer ${apiKey}"` : '',
+    ...body,
+  };
+}
+
+async function requestHostProxyChatCompletion(apiBase, settings, body, signal) {
+  return fetchText('/api/backends/chat-completions/generate', {
+    method: 'POST',
+    headers: getHostProxyHeaders(),
+    body: JSON.stringify(buildHostProxyChatConfig(apiBase, settings, body)),
+    cache: 'no-cache',
+    timeoutMs: CHAT_COMPLETION_TIMEOUT_MS,
+    signal,
+  });
+}
+
+function createCancelError() {
+  const error = new Error('请求已取消');
+  error.name = 'SoulLinkCancelError';
+  return error;
+}
+
+async function chatCompletion(settings, messages, options = {}) {
+  const apiBase = getApiBase(settings);
+  if (!apiBase) throw new Error('请先在「API 连接」中配置 Base URL');
+  const model = String(settings?.model || '').trim();
+  if (!model) throw new Error('请先在「API 连接」中选择模型');
+  const url = `${apiBase}/chat/completions`;
+  const body = {
+    model,
+    messages,
+    stream: false,
+    temperature: Number.isFinite(options.temperature) ? options.temperature : 0.2,
+  };
+  const useHostProxy = isCrossOriginUrl(url);
+  let response = null;
+  let responseText = '';
+  let transport = useHostProxy ? 'host-proxy' : 'direct';
+  logApp('debug', '发送 AI 对话请求', `${model} · ${transport}`);
+  try {
+    if (useHostProxy) {
+      let proxyError = null;
+      try {
+        ({ response, responseText } = await requestHostProxyChatCompletion(apiBase, settings, body, options.signal));
+      } catch (error) {
+        if (options.signal?.aborted) throw createCancelError();
+        proxyError = error;
+        console.warn(`[${MODULE_NAME}] host proxy chat completion failed, trying direct`, error);
+      }
+      const proxyLooksBroken = !response?.ok || !looksLikeJson(responseText);
+      if (proxyError || proxyLooksBroken || shouldFallbackFromHostProxy(responseText, response?.status)) {
+        transport = 'direct-after-proxy-fallback';
+        ({ response, responseText } = await fetchText(url, {
+          method: 'POST',
+          headers: getAuthHeaders(settings),
+          body: JSON.stringify(body),
+          timeoutMs: CHAT_COMPLETION_TIMEOUT_MS,
+          signal: options.signal,
+        }));
+      }
+    } else {
+      ({ response, responseText } = await fetchText(url, {
+        method: 'POST',
+        headers: getAuthHeaders(settings),
+        body: JSON.stringify(body),
+        timeoutMs: CHAT_COMPLETION_TIMEOUT_MS,
+        signal: options.signal,
+      }));
+    }
+  } catch (error) {
+    if (options.signal?.aborted) throw createCancelError();
+    throw new Error(`对话请求失败（${transport}）。请检查 API 配置。原始错误: ${String(error?.message || error)}`);
+  }
+  if (!response?.ok) {
+    throw new Error(`对话请求失败 ${response?.status}（${transport}）: ${String(responseText || '').slice(0, 240)}`);
+  }
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`对话响应不是 JSON（${transport}）: ${String(responseText || '').slice(0, 180)}`);
+  }
+  if (data && typeof data === 'object' && data.error) {
+    const errorMessage = typeof data.error === 'string'
+      ? data.error
+      : (data.error.message || JSON.stringify(data.error));
+    throw new Error(`上游 API 返回错误（${transport}）: ${String(errorMessage).slice(0, 240)}`);
+  }
+  if (data && typeof data === 'object' && data.response != null && data.choices == null) {
+    try {
+      const nested = typeof data.response === 'string' ? JSON.parse(data.response) : data.response;
+      if (nested && typeof nested === 'object') data = nested;
+    } catch {}
+  }
+  const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text;
+  if (typeof content !== 'string' || !content.trim()) {
+    const errorMessage = data?.error?.message ? `: ${data.error.message}` : '';
+    throw new Error(`AI 未返回文本内容（${transport}）${errorMessage}`);
+  }
+  logApp('debug', 'AI 对话响应已接收', `${model} · ${transport}`);
+  return content;
+}
+
+function parseAgentJson(text) {
+  const source = String(text || '').trim();
+  const fenced = source.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  const candidate = fenced ? fenced[1].trim() : source;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try {
+      return JSON.parse(candidate.slice(start, end + 1));
+    } catch {}
+  }
+  try {
+    return JSON.parse(candidate);
+  } catch (error) {
+    throw new Error(`AI 返回内容无法解析为 JSON：${String(error?.message || error)}`);
+  }
+}
+
+function applyArchiveDiff(archive, diff) {
+  const changes = [];
+  if (!diff || typeof diff !== 'object' || Array.isArray(diff)) return changes;
+  if (diff.fields && typeof diff.fields === 'object' && !Array.isArray(diff.fields)) {
+    for (const key of ARCHIVE_SCALAR_FIELDS) {
+      if (diff.fields[key] === undefined || diff.fields[key] === null) continue;
+      const value = String(diff.fields[key]).trim();
+      if (archive.fields[key] !== value) {
+        archive.fields[key] = value;
+        changes.push(`字段「${ARCHIVE_SCALAR_LABELS[key]}」→ ${value}`);
+      }
+    }
+  }
+  for (const section of ARCHIVE_SECTIONS) {
+    const ops = diff[section.key];
+    if (!ops || typeof ops !== 'object' || Array.isArray(ops)) continue;
+    applySectionOps(archive, section, ops, changes);
+  }
+  return changes;
+}
+
+function applySectionOps(archive, section, ops, changes) {
+  const items = Array.isArray(archive[section.key]) ? archive[section.key] : [];
+  const removeIds = new Set((Array.isArray(ops.remove) ? ops.remove : []).map((id) => String(id)));
+  const removed = items.filter((item) => !removeIds.has(String(item.id)));
+  if (removed.length !== items.length) {
+    changes.push(`「${section.label}」移除 ${items.length - removed.length} 条`);
+  }
+
+  const updateById = new Map();
+  (Array.isArray(ops.update) ? ops.update : []).forEach((item) => {
+    if (item && item.id !== undefined && item.id !== null) updateById.set(String(item.id), String(item.content ?? ''));
+  });
+  const next = removed.map((item) => {
+    const content = updateById.get(String(item.id));
+    if (content === undefined || content === item.content) return item;
+    changes.push(`「${section.label}」更新 ${item.id}`);
+    return { ...item, content };
+  });
+
+  const seenContents = new Set(next.map((item) => item.content));
+  const usedIds = new Set(items.map((item) => String(item.id)));
+  const additions = Array.isArray(ops.add) ? ops.add : [];
+  for (const addition of additions) {
+    const content = String(typeof addition === 'string' ? addition : addition?.content ?? '').trim();
+    if (!content) continue;
+    if (seenContents.has(content)) continue;
+    let id = null;
+    if (addition && typeof addition === 'object' && addition.id !== undefined && addition.id !== null) {
+      const candidate = String(addition.id).trim();
+      if (candidate && !usedIds.has(candidate)) id = candidate;
+    }
+    if (!id) id = nextSectionItemId(section, next);
+    next.push({ id, content });
+    usedIds.add(id);
+    seenContents.add(content);
+    changes.push(`「${section.label}」新增 ${content.length > 24 ? `${content.slice(0, 24)}…` : content}`);
+  }
+
+  archive[section.key] = next;
+}
+
+async function analyzeCharacter(name) {
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : null;
+  const archive = roster?.[name];
+  if (!ctx || !archive) return 'skipped';
+  if (archiveAnalysisState[name]?.state === 'busy') return 'busy';
+  const settings = getSettings(ctx);
+  const prompt = getPromptSavedText('archiveSystem', ctx);
+  if (!prompt) {
+    globalThis.toastr?.error?.('未找到「档案系统」提示词', `[${MODULE_NAME}]`);
+    return 'skipped';
+  }
+  const controller = new AbortController();
+  archiveAnalysisState[name] = { state: 'busy', message: '分析中…', controller };
+  renderArchiveCard(name);
+  renderAnalyzeAllButton();
+  logApp('info', '开始分析角色档案', name);
+  try {
+    const messages = buildArchiveAnalysisMessages(name, archive, prompt);
+    const content = await chatCompletion(settings, messages, { signal: controller.signal });
+    const diff = parseAgentJson(content);
+    const changes = applyArchiveDiff(archive, diff);
+    archive.updatedAt = Date.now();
+    saveSettingsImmediate(ctx);
+    const summary = changes.length > 0 ? `更新 ${changes.length} 处` : '无变化';
+    archiveAnalysisState[name] = { state: 'ok', message: summary };
+    logApp('info', '角色档案分析完成', name, summary);
+    globalThis.toastr?.success?.(`「${name}」${summary}`, `[${MODULE_NAME}]`);
+    return 'ok';
+  } catch (error) {
+    const cancelled = controller.signal.aborted || error?.name === 'SoulLinkCancelError' || error?.name === 'AbortError';
+    if (cancelled) {
+      // 取消按钮点击时已把状态置为 cancelled，这里不再覆盖；
+      // 若因其他原因中断（如宿主提前 abort），则补齐状态。
+      if (archiveAnalysisState[name]?.state !== 'cancelled') {
+        archiveAnalysisState[name] = { state: 'cancelled', message: '已取消' };
+      }
+      logApp('info', '角色档案分析已取消', name);
+      return 'cancelled';
+    }
+    console.error(`[${MODULE_NAME}] analyzeCharacter failed`, error);
+    const message = String(error?.message || error);
+    archiveAnalysisState[name] = { state: 'error', message: '分析失败' };
+    logApp('error', '角色档案分析失败', name, message);
+    globalThis.toastr?.error?.(`「${name}」分析失败：${message.slice(0, 160)}`, `[${MODULE_NAME}]`);
+    return 'error';
+  } finally {
+    renderArchiveCard(name);
+    renderAnalyzeAllButton();
+    refreshHomeStatuses();
+  }
+}
+
 function hasMenuEntry() {
   const menu = document.getElementById('extensionsMenu');
   if (!menu) return false;
@@ -1924,6 +2877,8 @@ async function bootstrap() {
   globalThis[BOOTSTRAP_RUNTIME_KEY] = true;
   try {
     initHostEventLogging();
+    onHostEvent(ctx, 'chatChanged', refreshChatBoundViews, '__soullink_chat_changed_handler__');
+    onHostEvent(ctx, 'groupSelected', refreshChatBoundViews, '__soullink_group_selected_handler__');
     injectScribbleFilters();
     createPanel();
     createSphere();
