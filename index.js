@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.9.11';
+const MODULE_VERSION = '1.0.0';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -23,6 +23,18 @@ const API_KEY_TOGGLE_ID = 'soullink-api-key-toggle';
 const API_CONNECT_ID = 'soullink-api-connect';
 const API_MODEL_LIST_ID = 'soullink-api-model-list';
 const API_MODEL_ID = 'soullink-api-model';
+const FILTER_LIST_ID = 'soullink-filter-list';
+const FILTER_STATUS_ID = 'soullink-filter-status';
+const FILTER_ADD_ID = 'soullink-filter-add';
+const FILTER_IMPORT_ID = 'soullink-filter-import';
+const FILTER_IMPORT_FILE_ID = 'soullink-filter-import-file';
+const FILTER_EXPORT_ID = 'soullink-filter-export';
+const FILTER_EDITOR_ID = 'soullink-filter-editor';
+const FILTER_EDITOR_NAME_ID = 'soullink-filter-editor-name';
+const FILTER_EDITOR_REGEX_ID = 'soullink-filter-editor-regex';
+const FILTER_EDITOR_VALID_ID = 'soullink-filter-editor-valid';
+const FILTER_EDITOR_SAVE_ID = 'soullink-filter-editor-save';
+const FILTER_EDITOR_CANCEL_ID = 'soullink-filter-editor-cancel';
 const HOME_LOG_STATUS_ID = 'soullink-home-log-status';
 const LOG_SEARCH_ID = 'soullink-log-search';
 const LOG_MAX_ID = 'soullink-log-max';
@@ -147,6 +159,17 @@ const NETWORK_NOISE_PATTERNS = Object.freeze([
 const LOG_FULL_BODY_MAX = 5;
 const CHAT_COMPLETION_TIMEOUT_MS = 60000;
 const ARCHIVE_RECENT_MESSAGE_COUNT = 4;
+// 消息正则过滤：档案分析 / 档案预筛 / 角色扮演预筛 / 角色推演这四种调用都会把
+// 最近的几条消息作为上下文，先按启用的正则把每条消息内容中匹配的部分剔除，
+// 整条内容都被匹配的消息直接不进入上下文（默认剔除智绘姬的 <image> 图片占位块）。
+const MESSAGE_FILTER_DEFAULT_IMAGE = Object.freeze({
+  id: 'default-zhihuiji-image',
+  name: '智绘姬',
+  pattern: '<image>[\\s\\S]*?<\\/image>',
+  flags: 'g',
+  enabled: true,
+});
+const MESSAGE_FILTERS_DEFAULT = Object.freeze([MESSAGE_FILTER_DEFAULT_IMAGE]);
 const LOG_LEVELS = Object.freeze(['debug', 'info', 'warn', 'error']);
 const HOST_EVENTS_TO_LOG = Object.freeze([
   'appReady',
@@ -159,6 +182,7 @@ const HOST_EVENTS_TO_LOG = Object.freeze([
   'streamStarted',
   'streamEnded',
   'generationStarted',
+  'messageDeleted',
   'generationEnded',
   'onlineStatusChanged',
 ]);
@@ -196,6 +220,9 @@ const NPC_CLEANUP_END_HANDLER_KEY = '__soullink_npc_cleanup_end_handler__';
 const NPC_CLEANUP_STOP_HANDLER_KEY = '__soullink_npc_cleanup_stop_handler__';
 const HOST_EVENT_WATCHDOG_KEY = '__soullink_host_event_watchdog__';
 const HOST_EVENT_WATCHDOG_INTERVAL_MS = 4000;
+const FLOOR_TRACE_CHAT_HANDLER_KEY = '__soullink_floor_trace_chat_handler__';
+const FLOOR_TRACE_GROUP_HANDLER_KEY = '__soullink_floor_trace_group_handler__';
+const FLOOR_TRACE_DELETE_HANDLER_KEY = '__soullink_floor_trace_delete_handler__';
 
 const DEFAULT_PROMPTS = Object.freeze({
   archiveSystem: `你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。
@@ -395,6 +422,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   npDeductionEnabled: true,
   archives: {},
   worldInfo: { excluded: {} },
+  messageFilters: MESSAGE_FILTERS_DEFAULT,
 });
 
 const FALLBACK_SETTINGS_STORE = new WeakMap();
@@ -523,6 +551,16 @@ function getSettings(ctx) {
   } else if (!settings.worldInfo.excluded || typeof settings.worldInfo.excluded !== 'object' || Array.isArray(settings.worldInfo.excluded)) {
     settings.worldInfo.excluded = {};
     shouldSave = true;
+  }
+  if (!Array.isArray(settings.messageFilters)) {
+    settings.messageFilters = cloneValue(MESSAGE_FILTERS_DEFAULT);
+    shouldSave = true;
+  } else {
+    const normalizedFilters = normalizeMessageFilterList(settings.messageFilters);
+    if (JSON.stringify(normalizedFilters) !== JSON.stringify(settings.messageFilters)) {
+      settings.messageFilters = normalizedFilters;
+      shouldSave = true;
+    }
   }
   const prompts = settings.prompts;
   if (!prompts || typeof prompts !== 'object' || Array.isArray(prompts)) {
@@ -807,6 +845,7 @@ const HOST_EVENT_TYPE_KEYS = Object.freeze({
   generationStarted: 'GENERATION_STARTED',
   generationEnded: 'GENERATION_ENDED',
   generationStopped: 'GENERATION_STOPPED',
+  messageDeleted: 'MESSAGE_DELETED',
   onlineStatusChanged: 'ONLINE_STATUS_CHANGED',
 });
 
@@ -1369,6 +1408,39 @@ function createPanel() {
             </div>
             <p class="soullink-api__hint">填入接口地址与 API Key 后点「连接并拉取模型」，再从列表选择模型；不支持模型列表的渠道可直接手动填写模型名称。</p>
           </div>
+          <div class="soullink-panel__section soullink-filter">
+            <div class="soullink-panel__section-head">
+              <span class="soullink-panel__section-title">正则过滤</span>
+              <span id="${FILTER_STATUS_ID}" class="soullink-filter__status" data-state="idle">读取中…</span>
+            </div>
+            <p class="soullink-filter__hint">档案分析、档案预筛、角色扮演预筛、角色推演这四种调用都会把最近的几条消息作为上下文；启用正则后，每条消息内容中匹配的部分会被剔除，整条内容都被匹配的消息不再进入上下文。</p>
+            <div class="soullink-filter__toolbar">
+              <button type="button" id="${FILTER_ADD_ID}" class="soullink-btn soullink-btn--ghost">＋ 新建</button>
+              <button type="button" id="${FILTER_IMPORT_ID}" class="soullink-btn soullink-btn--ghost">📥 导入</button>
+              <input id="${FILTER_IMPORT_FILE_ID}" type="file" accept=".json,application/json" hidden />
+              <button type="button" id="${FILTER_EXPORT_ID}" class="soullink-btn soullink-btn--ghost">📤 导出</button>
+            </div>
+            <div id="${FILTER_EDITOR_ID}" class="soullink-filter__editor" hidden>
+              <div class="soullink-filter__editor-meta">
+                <span class="soullink-filter__editor-title">编辑正则</span>
+                <span id="${FILTER_EDITOR_VALID_ID}" class="soullink-filter__valid" data-state="idle"></span>
+              </div>
+              <label class="soullink-filter__field" for="${FILTER_EDITOR_NAME_ID}">
+                <span class="soullink-filter__label">名称</span>
+                <input id="${FILTER_EDITOR_NAME_ID}" class="soullink-input" type="text" placeholder="例如：智绘姬" autocomplete="off" spellcheck="false" />
+              </label>
+              <label class="soullink-filter__field" for="${FILTER_EDITOR_REGEX_ID}">
+                <span class="soullink-filter__label">表达式</span>
+                <input id="${FILTER_EDITOR_REGEX_ID}" class="soullink-input soullink-filter__regex-input" type="text" placeholder="/<image>[\s\S]*?<\/image>/g" autocomplete="off" spellcheck="false" />
+              </label>
+              <p class="soullink-filter__editor-hint">支持完整字面量（/表达式/标记，如 /<image>[\s\S]*?<\/image>/g）或纯表达式两种写法；保存时校验正则能否编译。</p>
+              <div class="soullink-filter__editor-actions">
+                <button type="button" id="${FILTER_EDITOR_CANCEL_ID}" class="soullink-btn soullink-btn--ghost">取消</button>
+                <button type="button" id="${FILTER_EDITOR_SAVE_ID}" class="soullink-btn soullink-btn--primary" disabled>💾 保存</button>
+              </div>
+            </div>
+            <div id="${FILTER_LIST_ID}" class="soullink-filter__list"></div>
+          </div>
         </section>
         <section id="${LOG_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-log">
@@ -1507,6 +1579,7 @@ function createPanel() {
   document.body.appendChild(panel);
   initDraggablePanel(panel);
   initApiSection(panel);
+  initFilterSection(panel);
   initPanelViews(panel);
   initLogView(panel);
   initPresetSection(panel);
@@ -1669,6 +1742,342 @@ function initApiSection(panel) {
     console.warn(`[${MODULE_NAME}] applyApiSettingsToForm failed`, error);
   }
   panel.dataset.apiReady = 'true';
+}
+
+// ---------- 正则过滤面板 UI ----------
+let filterEditingId = null; // 正在编辑的正则 id；null = 新建
+
+function getFilterSettings() {
+  const ctx = getContextSafe();
+  return ctx ? getSettings(ctx) : null;
+}
+
+function setFilterStatus(message, state = 'idle') {
+  const status = document.getElementById(FILTER_STATUS_ID);
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.state = state;
+}
+
+function renderFilterStatus() {
+  const settings = getFilterSettings();
+  const list = settings ? getMessageFilterList(settings) : [];
+  const enabled = list.filter((item) => item && item.enabled !== false).length;
+  setFilterStatus('共 ' + list.length + ' 条 · 启用 ' + enabled, enabled > 0 ? 'ok' : 'idle');
+}
+
+function formatFilterRegex(item) {
+  return '/' + item.pattern + '/' + item.flags;
+}
+
+function renderFilterList() {
+  const listEl = document.getElementById(FILTER_LIST_ID);
+  if (!listEl) return;
+  const settings = getFilterSettings();
+  const list = settings ? getMessageFilterList(settings) : [];
+  listEl.innerHTML = '';
+  if (list.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'soullink-filter__empty';
+    empty.textContent = '还没有正则：点「＋ 新建」添加，或「📥 导入」从 JSON 文件恢复。';
+    listEl.appendChild(empty);
+  }
+  for (const item of list) {
+    const row = document.createElement('div');
+    row.className = 'soullink-filter__row';
+    row.dataset.filterId = item.id;
+    const toggle = document.createElement('label');
+    toggle.className = 'soullink-filter__toggle';
+    toggle.title = item.enabled !== false ? '点击停用该正则' : '点击启用该正则';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = item.enabled !== false;
+    toggle.appendChild(checkbox);
+    toggle.appendChild(document.createElement('span'));
+    const info = document.createElement('div');
+    info.className = 'soullink-filter__info';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'soullink-filter__name';
+    nameEl.textContent = item.name;
+    const patternEl = document.createElement('code');
+    patternEl.className = 'soullink-filter__pattern';
+    patternEl.textContent = formatFilterRegex(item);
+    info.appendChild(nameEl);
+    info.appendChild(patternEl);
+    const actions = document.createElement('div');
+    actions.className = 'soullink-filter__actions';
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'soullink-filter__action';
+    editBtn.textContent = '✏️';
+    editBtn.title = '编辑';
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'soullink-filter__action soullink-filter__action--danger';
+    delBtn.textContent = '🗑';
+    delBtn.title = '删除';
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
+    row.appendChild(toggle);
+    row.appendChild(info);
+    row.appendChild(actions);
+    listEl.appendChild(row);
+  }
+  renderFilterStatus();
+}
+
+function persistFilterList(ctx, list) {
+  const settings = getSettings(ctx);
+  settings.messageFilters = normalizeMessageFilterList(list);
+  saveSettingsImmediate(ctx);
+}
+
+// 解析 /表达式/标记 字面量；不以 / 开头则按纯表达式处理（从右向左找未被转义的分隔符）。
+function parseRegexLiteral(text) {
+  const input = String(text || '').trim();
+  if (!input) throw new Error('表达式不能为空');
+  if (!input.startsWith('/')) {
+    new RegExp(input);
+    return { pattern: input, flags: '' };
+  }
+  let delimiter = -1;
+  for (let i = input.length - 1; i >= 1; i--) {
+    if (input[i] !== '/') continue;
+    let backslashes = 0;
+    for (let j = i - 1; j >= 0 && input[j] === '\\'; j--) backslashes += 1;
+    if (backslashes % 2 === 1) continue; // 被转义的斜杠不是分隔符
+    if (/^[dgimsuvy]*$/.test(input.slice(i + 1))) {
+      delimiter = i;
+      break;
+    }
+  }
+  if (delimiter <= 0) throw new Error('无法解析，请使用 /表达式/标记 或纯表达式写法');
+  const pattern = input.slice(1, delimiter);
+  const flags = input.slice(delimiter + 1);
+  if (!pattern) throw new Error('表达式不能为空');
+  new RegExp(pattern, flags);
+  return { pattern, flags };
+}
+
+function validateFilterEditor() {
+  const name = String(document.getElementById(FILTER_EDITOR_NAME_ID)?.value || '').trim();
+  const raw = String(document.getElementById(FILTER_EDITOR_REGEX_ID)?.value || '').trim();
+  const validEl = document.getElementById(FILTER_EDITOR_VALID_ID);
+  const saveBtn = document.getElementById(FILTER_EDITOR_SAVE_ID);
+  let message = '';
+  let state = 'error';
+  if (!name) {
+    message = '请填写名称';
+  } else if (!raw) {
+    message = '请填写表达式';
+  } else {
+    try {
+      parseRegexLiteral(raw);
+      message = '✓ 表达式有效';
+      state = 'ok';
+    } catch (error) {
+      message = '✗ ' + String(error?.message || error);
+    }
+  }
+  if (validEl) {
+    validEl.textContent = message;
+    validEl.dataset.state = state;
+  }
+  if (saveBtn) saveBtn.disabled = state !== 'ok';
+}
+
+function openFilterEditor(item) {
+  const editor = document.getElementById(FILTER_EDITOR_ID);
+  if (!editor) return;
+  filterEditingId = item ? item.id : null;
+  document.getElementById(FILTER_EDITOR_NAME_ID).value = item ? item.name : '';
+  document.getElementById(FILTER_EDITOR_REGEX_ID).value = item ? formatFilterRegex(item) : '';
+  editor.hidden = false;
+  validateFilterEditor();
+  document.getElementById(FILTER_EDITOR_NAME_ID)?.focus?.();
+}
+
+function closeFilterEditor() {
+  const editor = document.getElementById(FILTER_EDITOR_ID);
+  if (editor) editor.hidden = true;
+  filterEditingId = null;
+  // 关闭时清空表单并禁用保存：避免「取消后编辑框仍可见」的残留状态下
+  // 再次点保存按新建处理、产生重复条目。
+  const nameEl = document.getElementById(FILTER_EDITOR_NAME_ID);
+  const regexEl = document.getElementById(FILTER_EDITOR_REGEX_ID);
+  if (nameEl) nameEl.value = '';
+  if (regexEl) regexEl.value = '';
+  const validEl = document.getElementById(FILTER_EDITOR_VALID_ID);
+  if (validEl) {
+    validEl.textContent = '';
+    validEl.dataset.state = 'idle';
+  }
+  const saveBtn = document.getElementById(FILTER_EDITOR_SAVE_ID);
+  if (saveBtn) saveBtn.disabled = true;
+}
+
+function saveFilterEditor() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const settings = getSettings(ctx);
+  const name = String(document.getElementById(FILTER_EDITOR_NAME_ID)?.value || '').trim();
+  const raw = String(document.getElementById(FILTER_EDITOR_REGEX_ID)?.value || '').trim();
+  let parsed;
+  try {
+    parsed = parseRegexLiteral(raw);
+  } catch (error) {
+    globalThis.toastr?.error?.(String(error?.message || error), '[' + MODULE_NAME + ']');
+    validateFilterEditor();
+    return;
+  }
+  if (!name) {
+    globalThis.toastr?.warning?.('请填写名称', '[' + MODULE_NAME + ']');
+    validateFilterEditor();
+    return;
+  }
+  const list = getMessageFilterList(settings);
+  if (filterEditingId) {
+    const target = list.find((item) => item && item.id === filterEditingId);
+    if (target) {
+      target.name = name;
+      target.pattern = parsed.pattern;
+      target.flags = parsed.flags;
+    }
+  } else {
+    list.push({ id: generateMessageFilterId(), name, pattern: parsed.pattern, flags: parsed.flags, enabled: true });
+  }
+  persistFilterList(ctx, list);
+  closeFilterEditor();
+  renderFilterList();
+  logApp('info', '消息正则已保存', name, formatFilterRegex({ pattern: parsed.pattern, flags: parsed.flags }));
+  globalThis.toastr?.success?.('正则「' + name + '」已保存', '[' + MODULE_NAME + ']');
+}
+
+async function deleteFilter(item) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const confirmed = await showConfirm('确定删除正则「' + item.name + '」？删除后不可恢复。');
+  if (!confirmed) return;
+  const settings = getSettings(ctx);
+  const list = getMessageFilterList(settings);
+  persistFilterList(ctx, list.filter((entry) => entry && entry.id !== item.id));
+  renderFilterList();
+  logApp('info', '消息正则已删除', item.name);
+  globalThis.toastr?.info?.('正则「' + item.name + '」已删除', '[' + MODULE_NAME + ']');
+}
+
+function exportFilters() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const settings = getSettings(ctx);
+  const list = getMessageFilterList(settings);
+  const payload = {
+    app: MODULE_NAME,
+    version: MODULE_VERSION,
+    exportedAt: new Date().toISOString(),
+    count: list.length,
+    filters: list.map((item) => ({ name: item.name, pattern: item.pattern, flags: item.flags, enabled: item.enabled !== false })),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'soullink-message-filters-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.json';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  if (list.length === 0) {
+    globalThis.toastr?.warning?.('暂无正则可导出', '[' + MODULE_NAME + ']');
+  } else {
+    globalThis.toastr?.success?.('已导出 ' + list.length + ' 条正则（JSON 文件）', '[' + MODULE_NAME + ']');
+  }
+}
+
+function importFilters(file) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      let data = JSON.parse(String(reader.result || ''));
+      let rawItems = data;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        rawItems = data.filters || data.items || data.entries || [];
+      }
+      if (!Array.isArray(rawItems)) throw new Error('文件内容不是正则列表（应为数组，或含 filters/items 字段的对象）');
+      const normalized = normalizeMessageFilterList(rawItems);
+      if (normalized.length === 0) throw new Error('文件中没有可用的正则（需要 名称 + 表达式，且表达式可编译）');
+      const settings = getSettings(ctx);
+      const list = getMessageFilterList(settings);
+      for (const item of normalized) {
+        item.id = generateMessageFilterId(); // 导入一律分配新 id，避免覆盖现有条目
+        list.push(item);
+      }
+      persistFilterList(ctx, list);
+      renderFilterList();
+      logApp('info', '消息正则已导入', normalized.length + ' 条');
+      globalThis.toastr?.success?.('已导入 ' + normalized.length + ' 条正则', '[' + MODULE_NAME + ']');
+    } catch (error) {
+      globalThis.toastr?.error?.('导入失败：' + String(error?.message || error), '[' + MODULE_NAME + ']');
+    }
+  };
+  reader.onerror = () => {
+    globalThis.toastr?.error?.('读取文件失败', '[' + MODULE_NAME + ']');
+  };
+  reader.readAsText(file);
+}
+
+function initFilterSection(panel) {
+  if (!panel || panel.dataset.filterReady === 'true') return;
+  document.getElementById(FILTER_ADD_ID)?.addEventListener('click', () => openFilterEditor(null));
+  document.getElementById(FILTER_EDITOR_CANCEL_ID)?.addEventListener('click', closeFilterEditor);
+  document.getElementById(FILTER_EDITOR_SAVE_ID)?.addEventListener('click', saveFilterEditor);
+  document.getElementById(FILTER_EDITOR_NAME_ID)?.addEventListener('input', validateFilterEditor);
+  document.getElementById(FILTER_EDITOR_REGEX_ID)?.addEventListener('input', validateFilterEditor);
+  document.getElementById(FILTER_EDITOR_REGEX_ID)?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !document.getElementById(FILTER_EDITOR_SAVE_ID)?.disabled) saveFilterEditor();
+  });
+  document.getElementById(FILTER_EXPORT_ID)?.addEventListener('click', exportFilters);
+  document.getElementById(FILTER_IMPORT_ID)?.addEventListener('click', () => {
+    document.getElementById(FILTER_IMPORT_FILE_ID)?.click();
+  });
+  document.getElementById(FILTER_IMPORT_FILE_ID)?.addEventListener('change', (event) => {
+    const file = event.target?.files?.[0];
+    if (file) importFilters(file);
+    event.target.value = '';
+  });
+  document.getElementById(FILTER_LIST_ID)?.addEventListener('click', (event) => {
+    const row = event.target.closest('.soullink-filter__row');
+    if (!row) return;
+    const settings = getFilterSettings();
+    if (!settings) return;
+    const item = getMessageFilterList(settings).find((entry) => entry && entry.id === row.dataset.filterId);
+    if (!item) return;
+    if (event.target.closest('.soullink-filter__action--danger')) {
+      deleteFilter(item);
+      return;
+    }
+    if (event.target.closest('.soullink-filter__action')) {
+      openFilterEditor(item);
+    }
+  });
+  document.getElementById(FILTER_LIST_ID)?.addEventListener('change', (event) => {
+    const checkbox = event.target;
+    if (!checkbox || checkbox.type !== 'checkbox') return;
+    const row = checkbox.closest('.soullink-filter__row');
+    const ctx = getContextSafe();
+    if (!ctx || !row) return;
+    const settings = getSettings(ctx);
+    const item = getMessageFilterList(settings).find((entry) => entry && entry.id === row.dataset.filterId);
+    if (!item) return;
+    item.enabled = checkbox.checked;
+    persistFilterList(ctx, getMessageFilterList(settings));
+    renderFilterList();
+  });
+  renderFilterList();
+  panel.dataset.filterReady = 'true';
+  logApp('info', '正则过滤系统已就绪');
 }
 
 // ---------- 日志系统：捕获与存储 ----------
@@ -2740,6 +3149,149 @@ function createEmptyArchive(name) {
   };
 }
 
+// ---------- 删楼联动档案清理：楼层溯源 ----------
+// 每次档案分析写入新条目时，给条目打上「来源楼层」标记（分析时聊天末条消息的签名）。
+// 玩家删除楼层后，程序在 messageDeleted / chatChanged / groupSelected / DOM 观察
+// 里对比该聊天的消息签名快照，把来源楼层已不存在的档案条目一并清除，
+// 避免档案保留已被删掉的剧情信息。旧数据（条目没有 source 字段）不受影响，
+// 手动编辑新增的条目同样不带 source、不会被自动清理；标量字段不做回滚。
+// 只有「楼层数减少」才视为删楼：其他扩展原地改写消息内容（如智绘姬把生图提示词
+// 插回最新楼层）不会减少楼层数，签名变化只更新快照、不触发清理。
+const floorTraceSnapshots = new Map(); // chatKey -> Set<消息签名>
+const floorTraceLastLengths = new Map(); // chatKey -> 上次快照时的楼层数
+
+function getCurrentFloorSignature(ctx) {
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  const lastMessage = chat[chat.length - 1];
+  return lastMessage ? buildAutoArchiveSignature(lastMessage) : '';
+}
+
+function getChatSignatureSet(ctx) {
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  const signatures = new Set();
+  for (const message of chat) {
+    const signature = buildAutoArchiveSignature(message);
+    if (signature) signatures.add(signature);
+  }
+  return signatures;
+}
+
+function purgeArchiveEntriesForDeletedFloors(ctx, deletedSignatures) {
+  if (!deletedSignatures || deletedSignatures.size === 0) return 0;
+  const roster = ctx ? getRoster(ctx) : null;
+  if (!roster) return 0;
+  let removed = 0;
+  const byCharacter = {};
+  for (const name of Object.keys(roster)) {
+    const archive = roster[name];
+    if (!archive || typeof archive !== 'object') continue;
+    for (const section of ARCHIVE_SECTIONS) {
+      const items = Array.isArray(archive[section.key]) ? archive[section.key] : [];
+      if (items.length === 0) continue;
+      const kept = items.filter((item) => {
+        if (!item || typeof item !== 'object' || !item.source) return true;
+        return !deletedSignatures.has(String(item.source));
+      });
+      if (kept.length !== items.length) {
+        const count = items.length - kept.length;
+        removed += count;
+        byCharacter[name] = (byCharacter[name] || 0) + count;
+        archive[section.key] = kept;
+      }
+    }
+  }
+  if (removed > 0) {
+    saveSettingsImmediate(ctx);
+    logApp('info', '删楼联动档案清理', `楼层已删除，同步清理档案 ${removed} 条`, byCharacter);
+    globalThis.toastr?.info?.(`已删除楼层对应的档案条目已清理（${removed} 条）`, `[${MODULE_NAME}]`);
+    renderArchiveList();
+    refreshHomeStatuses();
+  }
+  return removed;
+}
+
+function rebuildFloorTraceSnapshot(ctx) {
+  if (!ctx) return;
+  floorTraceLastChatKey = getCurrentChatKey(ctx);
+  floorTraceSnapshots.set(floorTraceLastChatKey, getChatSignatureSet(ctx));
+  floorTraceLastLengths.set(floorTraceLastChatKey, Array.isArray(ctx.chat) ? ctx.chat.length : 0);
+}
+
+// 对比快照与当前聊天：返回已消失楼层的签名集合，并顺手把快照重建为当前状态。
+// 楼层数没有减少（内容编辑 / 重渲染 / 新增楼层）一律不算删楼，避免误清理。
+function diffFloorTraceSnapshot(ctx) {
+  const chatKey = getCurrentChatKey(ctx);
+  const previous = floorTraceSnapshots.get(chatKey);
+  const previousLength = floorTraceLastLengths.get(chatKey) ?? 0;
+  const current = getChatSignatureSet(ctx);
+  const currentLength = Array.isArray(ctx.chat) ? ctx.chat.length : 0;
+  rebuildFloorTraceSnapshot(ctx);
+  if (!previous || previous.size === 0) return new Set();
+  if (currentLength >= previousLength) return new Set();
+  const deleted = new Set();
+  for (const signature of previous) {
+    if (signature && !current.has(signature)) deleted.add(signature);
+  }
+  return deleted;
+}
+
+// chatChanged / groupSelected：切换/加载聊天后重建快照，并清理已消失楼层对应的档案。
+// 首次见到某聊天时快照为空，diff 不会产生任何清理，避免扩展加载时误删历史数据。
+function onFloorTraceChatChanged() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  ensureFloorTraceObserver();
+  const deleted = diffFloorTraceSnapshot(ctx);
+  if (deleted.size > 0) purgeArchiveEntriesForDeletedFloors(ctx, deleted);
+}
+
+// messageDeleted：SillyTavern / TauriTavern 的该事件只回传「新聊天长度」，不提供被删消息本身，
+// 因此统一用快照对比找出已消失的楼层（删楼 / 重生成都会触发该事件，幂等可重复执行）。
+function onFloorTraceMessageDeleted() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const deleted = diffFloorTraceSnapshot(ctx);
+  if (deleted.size > 0) purgeArchiveEntriesForDeletedFloors(ctx, deleted);
+}
+
+// 聊天 DOM 观察：删楼 / 重生成会移除 .mes 元素、不触发 chatChanged，宿主事件也只回传长度；
+// 观察 #chat 的结构变化既维持快照新鲜（新增楼层），也能在宿主事件缺失时兜底清理。
+// 聊天切换 / 重载会先清空 DOM 再重新渲染，此时 ctx.chat 为空或 chatKey 已切换，
+// 直接跳过对比，避免把「重渲染」误判成「删楼」；其他扩展原地改写消息内容
+// （如智绘姬重渲染最新楼层）由 diff 的楼层数守卫拦截，同样不会误清理。
+let floorTraceObserver = null; // { observer, target }
+let floorTraceLastChatKey = '';
+
+function onFloorTraceDomChanged() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const chatKey = getCurrentChatKey(ctx);
+  if (chatKey !== floorTraceLastChatKey) {
+    // 聊天切换中：保留新旧快照，等 chatChanged 拿到完整聊天后再对比。
+    floorTraceLastChatKey = chatKey;
+    return;
+  }
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  if (chat.length === 0) return; // 清空 / 重载中：保留快照，等 chatChanged 重建。
+  const deleted = diffFloorTraceSnapshot(ctx);
+  if (deleted.size > 0) purgeArchiveEntriesForDeletedFloors(ctx, deleted);
+}
+
+function ensureFloorTraceObserver() {
+  if (typeof globalThis.MutationObserver === 'undefined' || typeof document === 'undefined') return;
+  const container = document.getElementById('chat') || (document.querySelector('.mes')?.parentElement || null);
+  if (!container) return;
+  if (floorTraceObserver && floorTraceObserver.target === container) return;
+  if (floorTraceObserver && floorTraceObserver.observer) floorTraceObserver.observer.disconnect();
+  const observer = new MutationObserver(onFloorTraceDomChanged);
+  observer.observe(container, { childList: true, subtree: true });
+  floorTraceObserver = { observer, target: container };
+  const ctx = getContextSafe();
+  if (ctx) {
+    floorTraceLastChatKey = getCurrentChatKey(ctx);
+    rebuildFloorTraceSnapshot(ctx);
+  }
+}
 // ---------- 注册系统：视图 UI ----------
 function registerCharacter(name) {
   const ctx = getContextSafe();
@@ -3428,15 +3980,96 @@ async function copyRoundInjectionText() {
     globalThis.toastr?.warning?.('复制失败，请手动选择文本', '[' + MODULE_NAME + ']');
   }
 }
+// ---------- 消息正则过滤 ----------
+// 四种调用（档案分析 / 档案预筛 / 角色扮演预筛 / 角色推演）都经 getRecentMessages
+// 取「最近几条消息」，过滤只需在这一处生效：按启用的正则把每条消息内容中匹配的
+// 部分剔除，整条内容都被匹配的消息不再进入上下文。
+let messageFilterIdCounter = 0;
+function generateMessageFilterId() {
+  messageFilterIdCounter += 1;
+  return 'filter-' + Date.now().toString(36) + '-' + messageFilterIdCounter.toString(36);
+}
+
+function normalizeMessageFilter(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const name = String(item.name || '').trim();
+  const pattern = String(item.pattern || '').trim();
+  const flags = String(item.flags || '').trim();
+  if (!name || !pattern) return null;
+  try {
+    new RegExp(pattern, flags);
+  } catch {
+    return null;
+  }
+  return {
+    id: String(item.id || generateMessageFilterId()),
+    name,
+    pattern,
+    flags,
+    enabled: item.enabled !== false,
+  };
+}
+
+function normalizeMessageFilterList(list) {
+  const seen = new Set();
+  const result = [];
+  for (const item of Array.isArray(list) ? list : []) {
+    const normalized = normalizeMessageFilter(item);
+    if (!normalized) continue;
+    if (seen.has(normalized.id)) normalized.id = generateMessageFilterId();
+    seen.add(normalized.id);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function getMessageFilterList(settings) {
+  return Array.isArray(settings?.messageFilters) ? settings.messageFilters : [];
+}
+
+// 编译当前启用的正则；个别表达式无效时跳过并告警，不影响其余过滤。
+function compileMessageFilters(settings) {
+  const compiled = [];
+  for (const item of getMessageFilterList(settings)) {
+    if (!item || item.enabled === false) continue;
+    const pattern = String(item.pattern || '').trim();
+    if (!pattern) continue;
+    try {
+      compiled.push(new RegExp(pattern, String(item.flags || '')));
+    } catch (error) {
+      logApp('warn', '消息正则过滤：表达式无效，已跳过', String(item.name || ''), String(error?.message || error));
+    }
+  }
+  return compiled;
+}
+
 // ---------- 档案分析：AI 调用 ----------
 function getRecentMessages(count) {
   const ctx = getContextSafe();
   const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-  return chat.slice(-count).map((message) => ({
-    role: message?.is_user ? 'user' : (message?.is_system ? 'system' : 'assistant'),
-    name: String(message?.name || ''),
-    content: String(message?.mes || ''),
-  }));
+  let filters = [];
+  try {
+    filters = compileMessageFilters(ctx ? getSettings(ctx) : null);
+  } catch (error) {
+    console.warn('[' + MODULE_NAME + '] unable to read message filters', error);
+  }
+  const messages = [];
+  for (const message of chat.slice(-count)) {
+    const raw = String(message?.mes || '');
+    let content = raw;
+    if (filters.length > 0) {
+      for (const regex of filters) content = content.replace(regex, '');
+      content = content.trim();
+      // 原本有内容、但全部被正则剔除 → 整条消息不进入上下文
+      if (content === '' && raw.trim() !== '') continue;
+    }
+    messages.push({
+      role: message?.is_user ? 'user' : (message?.is_system ? 'system' : 'assistant'),
+      name: String(message?.name || ''),
+      content,
+    });
+  }
+  return messages;
 }
 
 // ---------- 世界书系统 ----------
@@ -4213,7 +4846,7 @@ function parseAgentJson(text) {
   }
 }
 
-function applyArchiveDiff(archive, diff) {
+function applyArchiveDiff(archive, diff, sourceFloor) {
   const changes = [];
   if (!diff || typeof diff !== 'object' || Array.isArray(diff)) return changes;
   if (diff.fields && typeof diff.fields === 'object' && !Array.isArray(diff.fields)) {
@@ -4229,12 +4862,12 @@ function applyArchiveDiff(archive, diff) {
   for (const section of ARCHIVE_SECTIONS) {
     const ops = diff[section.key];
     if (!ops || typeof ops !== 'object' || Array.isArray(ops)) continue;
-    applySectionOps(archive, section, ops, changes);
+    applySectionOps(archive, section, ops, changes, sourceFloor);
   }
   return changes;
 }
 
-function applySectionOps(archive, section, ops, changes) {
+function applySectionOps(archive, section, ops, changes, sourceFloor) {
   const items = Array.isArray(archive[section.key]) ? archive[section.key] : [];
   const removeIds = new Set((Array.isArray(ops.remove) ? ops.remove : []).map((id) => String(id)));
   const removed = items.filter((item) => !removeIds.has(String(item.id)));
@@ -4266,7 +4899,9 @@ function applySectionOps(archive, section, ops, changes) {
       if (candidate && !usedIds.has(candidate)) id = candidate;
     }
     if (!id) id = nextSectionItemId(section, next);
-    next.push({ id, content });
+    const item = { id, content };
+    if (sourceFloor) item.source = sourceFloor;
+    next.push(item);
     usedIds.add(id);
     seenContents.add(content);
     changes.push(`「${section.label}」新增 ${content.length > 24 ? `${content.slice(0, 24)}…` : content}`);
@@ -4296,7 +4931,7 @@ async function analyzeCharacter(name) {
     const messages = await buildArchiveAnalysisMessages(name, archive, prompt);
     const content = await chatCompletion(settings, messages, { signal: controller.signal });
     const diff = parseAgentJson(content);
-    const changes = applyArchiveDiff(archive, diff);
+    const changes = applyArchiveDiff(archive, diff, getCurrentFloorSignature(ctx));
     archive.updatedAt = Date.now();
     saveSettingsImmediate(ctx);
     const summary = changes.length > 0 ? `更新 ${changes.length} 处` : '无变化';
@@ -5019,6 +5654,9 @@ async function registerMenuItem() {
 function installHostEventSubscriptions(ctx) {
   onHostEvent(ctx, 'chatChanged', refreshChatBoundViews, '__soullink_chat_changed_handler__');
   onHostEvent(ctx, 'groupSelected', refreshChatBoundViews, '__soullink_group_selected_handler__');
+  onHostEvent(ctx, 'chatChanged', onFloorTraceChatChanged, FLOOR_TRACE_CHAT_HANDLER_KEY);
+  onHostEvent(ctx, 'groupSelected', onFloorTraceChatChanged, FLOOR_TRACE_GROUP_HANDLER_KEY);
+  onHostEvent(ctx, 'messageDeleted', onFloorTraceMessageDeleted, FLOOR_TRACE_DELETE_HANDLER_KEY);
   onHostEvent(ctx, 'generationEnded', onAutoArchiveGenerationEnded, AUTO_ARCHIVE_END_HANDLER_KEY);
   onHostEvent(ctx, 'generationEnded', onNpcDeductionGenerationCleanup, NPC_CLEANUP_END_HANDLER_KEY);
   onHostEvent(ctx, 'generationStopped', onNpcDeductionGenerationCleanup, NPC_CLEANUP_STOP_HANDLER_KEY);
@@ -5057,6 +5695,7 @@ async function bootstrap() {
     initHostEventLogging();
     installHostEventSubscriptions(ctx);
     startHostEventWatchdog();
+    ensureFloorTraceObserver();
     injectScribbleFilters();
     createPanel();
     createSphere();
