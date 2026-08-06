@@ -1427,6 +1427,52 @@ select.soullink-input {
 .soullink-panel__link:hover {
   color: var(--sl-pink);
 }
+
+.soullink-panel__version {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.soullink-panel__version-check {
+  font-family: var(--sl-font);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1.5px dashed var(--sl-ink-soft);
+  background: transparent;
+  color: var(--sl-ink-soft);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.soullink-panel__version-check:hover {
+  color: var(--sl-ink);
+  border-color: var(--sl-ink);
+}
+
+.soullink-panel__version-check[data-state='checking'] {
+  color: var(--sl-blue);
+  border-color: var(--sl-blue);
+  cursor: default;
+}
+
+.soullink-panel__version-check[data-state='ok'] {
+  color: var(--sl-green);
+  border-color: var(--sl-green);
+}
+
+.soullink-panel__version-check[data-state='new'] {
+  color: var(--sl-pink);
+  border-color: var(--sl-pink);
+  background: rgba(229, 107, 111, 0.12);
+}
+
+.soullink-panel__version-check[data-state='error'] {
+  color: var(--sl-pink);
+  border-color: var(--sl-pink);
+}
 /* ---------- 角色注册（注册系统） ---------- */
 .soullink-home__card--register {
   border-radius: 235px 15px 255px 15px / 15px 255px 15px 235px;
@@ -1680,6 +1726,21 @@ select.soullink-input {
   color: #b03a48;
   border-color: rgba(229, 107, 111, 0.95);
   background: rgba(229, 107, 111, 0.2);
+}
+
+button.soullink-archive__status {
+  font-family: var(--sl-font);
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+button.soullink-archive__status:hover {
+  transform: rotate(-1.5deg) scale(1.05);
+  filter: brightness(1.07);
+}
+
+button.soullink-archive__status:active {
+  transform: rotate(0deg) scale(0.96);
 }
 
 .soullink-archive__analyze,
@@ -2414,4 +2475,128 @@ select.soullink-input {
 .soullink-filter__action--danger:hover {
   background: rgba(229, 107, 111, 0.18);
   border-color: rgba(176, 58, 72, 0.9);
+}
+
+/* ---------- 档案分析失败弹层：展示 AI 回复原文便于调试 ---------- */
+.soullink-archive-error {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: rgba(61, 43, 31, 0.35);
+}
+
+.soullink-archive-error.is-open {
+  display: flex;
+}
+
+.soullink-archive-error__card {
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 14px;
+  font-family: var(--sl-font);
+  font-size: 14px;
+  color: var(--sl-ink);
+  background: var(--sl-paper);
+  border: 3px solid var(--sl-ink);
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  box-shadow:
+    8px 9px 0 rgba(61, 43, 31, 0.16),
+    0 18px 34px rgba(61, 43, 31, 0.28);
+  filter: url(#soullink-wobble);
+  transform: rotate(-0.6deg);
+}
+
+.soullink-archive-error__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.soullink-archive-error__title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.soullink-archive-error__close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--sl-font);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--sl-ink);
+  background: var(--sl-paper-deep);
+  border: 2px solid var(--sl-ink);
+  border-radius: 50%;
+}
+
+.soullink-archive-error__close:hover {
+  filter: brightness(1.06);
+}
+
+.soullink-archive-error__hint {
+  max-height: 110px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  overflow: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: break-all;
+  color: #b03a48;
+  background: rgba(229, 107, 111, 0.14);
+  border: 2px dashed rgba(229, 107, 111, 0.75);
+  border-radius: 10px 255px 10px 255px / 255px 10px 255px 10px;
+}
+
+.soullink-archive-error__label {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.soullink-archive-error__content {
+  flex: 1;
+  min-height: 120px;
+  max-height: 44vh;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font-family: Consolas, "Cascadia Code", "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--sl-ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 2.5px solid var(--sl-ink-soft);
+  border-radius: 14px 255px 14px 255px / 255px 14px 255px 14px;
+}
+
+.soullink-archive-error__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.soullink-archive-error__actions .soullink-btn {
+  flex: 1;
+}
+
+.soullink-archive-error__close-btn.soullink-btn {
+  color: var(--sl-ink);
+  background: var(--sl-paper-deep);
 }

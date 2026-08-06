@@ -1,5 +1,11 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.0.0';
+const MODULE_VERSION = '1.0.1';
+const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
+const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
+const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
+const VERSION_CHECK_ID = 'soullink-version-check';
+// 版本检查结果缓存时长：1 小时内不重复联网，点击提示可强制重新检查。
+const VERSION_CHECK_CACHE_MS = 60 * 60 * 1000;
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -1319,6 +1325,96 @@ function refreshHomeApiStatus() {
   }
 }
 
+// ---------- 版本检查（GitHub 对比） ----------
+let versionCheckCache = null;
+
+function compareVersions(a, b) {
+  const parse = (v) => String(v || '').trim().replace(/^v/i, '').split('.').map((part) => {
+    const num = Number.parseInt(part, 10);
+    return Number.isFinite(num) ? num : 0;
+  });
+  const pa = parse(a);
+  const pb = parse(b);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
+function renderVersionCheck(node, cache) {
+  if (!node || !cache) return;
+  if (cache.isLatest) {
+    node.dataset.state = 'ok';
+    node.textContent = '已是最新版';
+    node.title = '当前已是最新版本，点击重新检查';
+  } else {
+    node.dataset.state = 'new';
+    node.textContent = `发现新版本 v${cache.latest}`;
+    node.title = `GitHub 上已有新版本 v${cache.latest}，点击重新检查`;
+  }
+}
+
+async function fetchLatestManifestVersion() {
+  const sources = [
+    {
+      url: GITHUB_MANIFEST_URL,
+      parse: (text) => JSON.parse(text)?.version,
+    },
+    {
+      url: GITHUB_API_MANIFEST_URL,
+      parse: (text) => {
+        const data = JSON.parse(text);
+        if (data?.encoding !== 'base64' || typeof data?.content !== 'string') {
+          throw new Error('API 响应格式异常');
+        }
+        if (typeof globalThis.atob !== 'function') throw new Error('环境不支持 base64 解码');
+        return JSON.parse(globalThis.atob(data.content))?.version;
+      },
+    },
+  ];
+  let lastError = null;
+  for (const source of sources) {
+    try {
+      const { response, responseText } = await fetchText(source.url, { timeoutMs: 10000 });
+      if (!response?.ok) throw new Error(`HTTP ${response?.status || '?'}`);
+      const version = String(source.parse(responseText) || '').trim();
+      if (!version) throw new Error('manifest 中没有版本号');
+      return version;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('所有检查源都失败');
+}
+
+async function checkLatestVersion(force = false) {
+  const node = document.getElementById(VERSION_CHECK_ID);
+  if (!node) return;
+  if (!force && versionCheckCache && Date.now() - versionCheckCache.checkedAt < VERSION_CHECK_CACHE_MS) {
+    renderVersionCheck(node, versionCheckCache);
+    return;
+  }
+  node.dataset.state = 'checking';
+  node.textContent = '检查更新…';
+  node.title = '正在联网检查 GitHub 上的最新版本';
+  try {
+    const latest = await fetchLatestManifestVersion();
+    const isLatest = compareVersions(MODULE_VERSION, latest) >= 0;
+    versionCheckCache = { latest, isLatest, checkedAt: Date.now() };
+    renderVersionCheck(node, versionCheckCache);
+    logApp('debug', `版本检查完成: 本地 v${MODULE_VERSION} / 远端 v${latest}${isLatest ? '（已是最新）' : '（发现新版本）'}`);
+  } catch (error) {
+    versionCheckCache = null;
+    node.dataset.state = 'error';
+    node.textContent = '检查失败，点击重试';
+    node.title = '联网检查最新版本失败，点击重试';
+    logApp('warn', `版本检查失败: ${String(error?.message || error)}`);
+  }
+}
+
 function createPanel() {
   let panel = getPanel();
   if (panel) return panel;
@@ -1571,8 +1667,11 @@ function createPanel() {
         </section>
       </div>
       <div class="soullink-panel__footer">
-        <span>v${MODULE_VERSION}</span>
-        <a class="soullink-panel__link" href="https://github.com/Rosa9527/SoulLink" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <span class="soullink-panel__version">
+          v${MODULE_VERSION}
+          <button type="button" id="${VERSION_CHECK_ID}" class="soullink-panel__version-check" data-state="checking" title="正在联网检查 GitHub 上的最新版本">检查更新…</button>
+        </span>
+        <a class="soullink-panel__link" href="${GITHUB_REPO_URL}" target="_blank" rel="noopener noreferrer">GitHub</a>
       </div>
     </div>
   `;
@@ -1586,6 +1685,8 @@ function createPanel() {
   initRegisterSection(panel);
   initArchiveSection(panel);
   initWorldBookSection(panel);
+  document.getElementById(VERSION_CHECK_ID)?.addEventListener('click', () => checkLatestVersion(true));
+  checkLatestVersion();
   panel.querySelector('.soullink-panel__close')?.addEventListener('click', closePanel);
   if (!globalThis[ESC_KEY_HANDLER_KEY]) {
     globalThis[ESC_KEY_HANDLER_KEY] = (event) => {
@@ -3101,7 +3202,7 @@ exposeLogApi();
 initNetworkCapture();
 
 // ---------- 注册系统与档案系统：数据模型 ----------
-const archiveAnalysisState = {}; // 角色名 -> { state: 'idle'|'busy'|'ok'|'error', message }
+const archiveAnalysisState = {}; // 角色名 -> { state: 'idle'|'busy'|'ok'|'error', message, detail }
 const archiveEditState = {};     // 角色名 -> true（处于编辑态）
 
 function getCurrentChatKey(ctx) {
@@ -3435,10 +3536,16 @@ function buildArchiveCard(name, archive) {
   nameNode.textContent = name;
 
   const state = archiveAnalysisState[name] || { state: 'idle', message: '' };
-  const status = document.createElement('span');
+  const status = document.createElement(state.state === 'error' ? 'button' : 'span');
+  status.type = 'button';
   status.className = 'soullink-archive__status';
   status.dataset.state = state.state;
   status.textContent = state.message || '待分析';
+  if (state.state === 'error') {
+    status.classList.add('is-clickable');
+    status.title = '点击查看分析失败详情（AI 回复原文）';
+    status.addEventListener('click', () => showArchiveAnalysisError(name, state));
+  }
 
   const analyzeBtn = document.createElement('button');
   analyzeBtn.type = 'button';
@@ -3686,6 +3793,82 @@ function cancelCharacterAnalysis(name) {
   renderAnalyzeAllButton();
   refreshHomeStatuses();
   logApp('info', '取消角色分析', name);
+}
+
+function showArchiveAnalysisError(name, state) {
+  const panel = getPanel();
+  if (!panel) return;
+  const detail = state?.detail || {};
+  const rawContent = String(detail.rawContent ?? '');
+  const errorMessage = String(detail.errorMessage ?? '');
+  let overlay = panel.querySelector('.soullink-archive-error');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'soullink-archive-error';
+    overlay.innerHTML = `
+      <div class="soullink-archive-error__card" role="dialog" aria-modal="true" aria-label="分析失败详情">
+        <div class="soullink-archive-error__head">
+          <span class="soullink-archive-error__title"></span>
+          <button type="button" class="soullink-archive-error__close" aria-label="关闭" title="关闭">✕</button>
+        </div>
+        <p class="soullink-archive-error__hint"></p>
+        <p class="soullink-archive-error__label">AI 回复原文：</p>
+        <pre class="soullink-archive-error__content"></pre>
+        <div class="soullink-archive-error__actions">
+          <button type="button" class="soullink-btn soullink-archive-error__copy">📋 一键复制</button>
+          <button type="button" class="soullink-btn soullink-archive-error__close-btn">关闭</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.soullink-archive-error__close')?.addEventListener('click', () => overlay.classList.remove('is-open'));
+    overlay.querySelector('.soullink-archive-error__close-btn')?.addEventListener('click', () => overlay.classList.remove('is-open'));
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) overlay.classList.remove('is-open');
+    });
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') overlay.classList.remove('is-open');
+    });
+    overlay.querySelector('.soullink-archive-error__copy')?.addEventListener('click', async (event) => {
+      const text = String(event.currentTarget?.dataset?.copyText ?? '').trim();
+      if (!text) return;
+      try {
+        if (globalThis.navigator?.clipboard?.writeText) {
+          await globalThis.navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand?.('copy');
+          textarea.remove();
+        }
+        globalThis.toastr?.success?.('已复制 AI 回复原文', `[${MODULE_NAME}]`);
+      } catch (error) {
+        globalThis.toastr?.error?.(`复制失败: ${error?.message || error}`, `[${MODULE_NAME}]`);
+      }
+    });
+    panel.appendChild(overlay);
+  }
+  overlay.querySelector('.soullink-archive-error__title').textContent = `「${name}」分析失败`;
+  overlay.querySelector('.soullink-archive-error__hint').textContent = errorMessage
+    ? `错误信息：${errorMessage}`
+    : '（本次失败未捕获到错误信息）';
+  const contentNode = overlay.querySelector('.soullink-archive-error__content');
+  const copyBtn = overlay.querySelector('.soullink-archive-error__copy');
+  const trimmed = rawContent.trim();
+  if (trimmed) {
+    contentNode.textContent = rawContent;
+    copyBtn.dataset.copyText = rawContent;
+    copyBtn.disabled = false;
+  } else {
+    contentNode.textContent = '（本次失败发生在 API 请求阶段，未收到 AI 回复内容）';
+    copyBtn.dataset.copyText = '';
+    copyBtn.disabled = true;
+  }
+  overlay.classList.add('is-open');
+  (copyBtn.disabled ? overlay.querySelector('.soullink-archive-error__close-btn') : copyBtn)?.focus?.();
 }
 
 async function analyzeAllCharacters() {
@@ -4390,9 +4573,7 @@ function refreshHomeWorldBookStatus() {
   try {
     const ctx = getContextSafe();
     const settings = ctx ? getSettings(ctx) : null;
-    const excludedCount = settings && settings.worldInfo?.excluded
-      ? Object.values(settings.worldInfo.excluded).reduce((sum, uids) => sum + (Array.isArray(uids) ? uids.length : 0), 0)
-      : 0;
+    const excludedCount = getWorldBookExcludedTotal(settings);
     const engineOk = Boolean(ctx && typeof ctx.getWorldInfoPrompt === 'function');
     if (!engineOk) {
       status.textContent = '引擎不可用';
@@ -4425,7 +4606,42 @@ function toggleWorldBookEntryExclusion(bookName, uid, excluded) {
   else delete excludedMap[bookKey];
   saveSettings(ctx);
   refreshHomeWorldBookStatus();
-  renderWorldBookList();
+  // 原地更新该条目行与状态栏：不重建列表，避免滚动位置跳回顶部。
+  updateWorldBookRowState(bookKey, uidKey, excluded);
+}
+
+function getWorldBookExcludedTotal(settings) {
+  const excluded = settings?.worldInfo?.excluded;
+  if (!excluded || typeof excluded !== 'object') return 0;
+  return Object.values(excluded).reduce((sum, uids) => sum + (Array.isArray(uids) ? uids.length : 0), 0);
+}
+
+// 排除勾选后原地刷新条目行与状态栏（行可能被搜索过滤隐藏，找不到行时只更新状态栏）。
+function updateWorldBookRowState(bookKey, uidKey, excluded) {
+  const row = worldBookRowsByKey.get(worldInfoEntryKey(bookKey, uidKey));
+  if (row) {
+    row.classList.toggle('is-excluded', excluded);
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    if (checkbox) checkbox.checked = excluded;
+    const badges = row.querySelector('.soullink-worldbook__entry-badges');
+    const existingBadge = row.querySelector('.soullink-worldbook__badge.is-excluded');
+    if (excluded) {
+      if (!existingBadge && badges) badges.appendChild(buildWorldBookBadge('已排除', 'is-excluded'));
+    } else if (existingBadge) {
+      existingBadge.remove();
+    }
+  }
+  const ctx = getContextSafe();
+  const settings = ctx ? getSettings(ctx) : null;
+  const excludedTotal = settings ? getWorldBookExcludedTotal(settings) : 0;
+  const status = document.getElementById(WORLDBOOK_STATUS_ID);
+  const summary = worldBookLastSummary;
+  if (status && summary) {
+    status.textContent = `${getWorldBookModeText(summary.mode)} · ${summary.bookCount} 本书 · ${excludedTotal} 条排除`;
+    status.dataset.state = summary.mode === 'none' ? 'error' : (excludedTotal > 0 ? 'ok' : 'idle');
+  }
+  const clearButton = document.getElementById(WORLDBOOK_CLEAR_ID);
+  if (clearButton) clearButton.hidden = excludedTotal === 0;
 }
 
 function clearWorldBookExclusions() {
@@ -4448,6 +4664,13 @@ function buildWorldBookBadge(text, className) {
 // 渲染序号：排除勾选/刷新会触发多次并发 render，只允许最新一次写 DOM，
 // 避免交错渲染导致列表重复。
 let worldBookRenderSeq = 0;
+
+// 已渲染条目行引用（书名 + uid → 行节点）：排除勾选时原地更新该行，
+// 不重建整个列表，保持当前滚动位置与搜索过滤状态。
+const worldBookRowsByKey = new Map();
+
+// 最近一次渲染的世界书概要：排除勾选后原地刷新状态栏，无需重新跑引擎。
+let worldBookLastSummary = null;
 
 // 每本书的搜索词：渲染会整体重建 DOM，搜索词单独保存，排除勾选/刷新后不丢。
 const worldBookSearchQueries = new Map();
@@ -4482,6 +4705,8 @@ async function renderWorldBookList() {
   const seq = ++worldBookRenderSeq;
   const list = document.getElementById(WORLDBOOK_LIST_ID);
   if (!list) return;
+  worldBookRowsByKey.clear();
+  worldBookLastSummary = null;
   const status = document.getElementById(WORLDBOOK_STATUS_ID);
   const chatNode = document.getElementById(WORLDBOOK_CHAT_ID);
   const banner = document.getElementById(WORLDBOOK_BANNER_ID);
@@ -4514,6 +4739,7 @@ async function renderWorldBookList() {
   const bookNames = await getActiveWorldBookNames(ctx, result);
   if (seq !== worldBookRenderSeq) return;
   const excludedTotal = excludedKeys.size;
+  worldBookLastSummary = { mode, bookCount: bookNames.size, excludedTotal };
   if (status) {
     status.textContent = `${getWorldBookModeText(mode)} · ${bookNames.size} 本书 · ${excludedTotal} 条排除`;
     status.dataset.state = mode === 'none' ? 'error' : (excludedTotal > 0 ? 'ok' : 'idle');
@@ -4591,6 +4817,7 @@ async function renderWorldBookList() {
       const row = document.createElement('label');
       row.className = 'soullink-worldbook__entry';
       row.dataset.search = String(entry.displayName || `条目 ${entry.uid}`).toLowerCase();
+      worldBookRowsByKey.set(worldInfoEntryKey(entry.world, entry.uid), row);
       if (excluded) row.classList.add('is-excluded');
       if (triggered) row.classList.add('is-triggered');
       const checkbox = document.createElement('input');
@@ -4927,10 +5154,11 @@ async function analyzeCharacter(name) {
   renderArchiveCard(name);
   renderAnalyzeAllButton();
   logApp('info', '开始分析角色档案', name);
+  let rawContent = '';
   try {
     const messages = await buildArchiveAnalysisMessages(name, archive, prompt);
-    const content = await chatCompletion(settings, messages, { signal: controller.signal });
-    const diff = parseAgentJson(content);
+    rawContent = await chatCompletion(settings, messages, { signal: controller.signal });
+    const diff = parseAgentJson(rawContent);
     const changes = applyArchiveDiff(archive, diff, getCurrentFloorSignature(ctx));
     archive.updatedAt = Date.now();
     saveSettingsImmediate(ctx);
@@ -4952,7 +5180,11 @@ async function analyzeCharacter(name) {
     }
     console.error(`[${MODULE_NAME}] analyzeCharacter failed`, error);
     const message = String(error?.message || error);
-    archiveAnalysisState[name] = { state: 'error', message: '分析失败' };
+    archiveAnalysisState[name] = {
+      state: 'error',
+      message: '分析失败',
+      detail: { rawContent, errorMessage: message },
+    };
     logApp('error', '角色档案分析失败', name, message);
     globalThis.toastr?.error?.(`「${name}」分析失败：${message.slice(0, 160)}`, `[${MODULE_NAME}]`);
     return 'error';
