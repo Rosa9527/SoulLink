@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.8.5';
+const MODULE_VERSION = '0.8.7';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -155,7 +155,7 @@ const DEFAULT_PROMPTS = Object.freeze({
   archiveSystem: `你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。
 你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
 档案用于让 AI 依据它完成该角色的角色扮演；档案分两类字段：标量字段与列表分节。
-档案应尽量完整：能从对话推断的标量字段与 MBTI 性格标签应及时补全，使 AI 能据此完整扮演该角色。
+档案应尽量完整：能从对话或其本人设定推断的标量字段与 MBTI 性格标签应及时补全，使 AI 能据此完整扮演该角色。
 
 【档案结构】
 - 标量字段（单值，直接覆盖）：name 姓名、age 年龄、gender 性别、occupation 职业。
@@ -173,8 +173,13 @@ const DEFAULT_PROMPTS = Object.freeze({
 - current_profile 是该角色当前已记录的档案：标量字段为字符串，列表分节为条目数组（每项含 id 与 content）。
 - 输入消息里的 <Recent_Messages> 块是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。
 - 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）
-  是世界书背景补充信息；它们不代表该角色亲历或已知，仅供你了解世界观以便合理推断；
-  是否写入该角色记忆，仍须判断该角色是否真的亲历/被告知/目击。
+  是世界书注入内容，条目通常以「<角色名>…</角色名>」形式分节，按性质分三类：
+  ① 与 character 同名的条目是该角色本人的设定卡（固有身份、家庭背景、性格、人际关系、世界观），
+     是权威设定来源，可直接用于补全该角色档案；
+  ② 普适世界设定（社会秩序、认主体系、魔法/超自然规则、种族矛盾、组织规则等对所有人生效的规则）
+     是该角色作为世界一员默认知晓并相信的常识，应写入其世界观；
+  ③ 其他角色的个人条目与私密信息（其秘密、私事、内心想法、不在场经历）不代表该角色亲历或已知，
+     只有该角色确实获知（亲历/被告知/目击）的内容才可写入其档案。
 - turn_index 是当前对话的消息索引，用于参考，无需输出。
 
 【输出契约】
@@ -196,15 +201,15 @@ const DEFAULT_PROMPTS = Object.freeze({
 - 任意字段为空时可以省略该字段，或返回空数组。
 
 【判断要点】
-- 标量字段（姓名/年龄/性别/职业）与 MBTI 性格标签一旦能从对话推断出，就应补全或更新，保证档案完整、可支撑角色扮演。
+- 标量字段（姓名/年龄/性别/职业）与 MBTI 性格标签一旦能从对话或其本人设定卡推断出，就应补全或更新，保证档案完整、可支撑角色扮演。
 - 性格只给一个四字母 MBTI 类型（如 INTP），不要写长句描述。
 - 世界观是角色扮演是否贴合设定的关键：当世界观明显偏离现实（如存在魔法、超自然、异种生理、不同的社会规则或物理法则）时，
   应把每一条与「现实常识」不同的运转规则单独记为一条，宁可多拆几条，也不要浓缩成一句模糊的概括；
   世界观越是不同于现实，记录越要具体、详尽。现实向世界观可保持精简。
-- 记录世界观时，可参照输入的 <World_Info_Before> / <World_Info_Extra> / <World_Info_After> 世界背景块
-  判断哪些设定该角色已知或相信；但只有该角色确实获知（亲历/被告知/目击）的设定才应进入其世界观，
-  且应记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。
-- 家庭背景/人际关系/记忆较稳定，仅在对话给出明确新信息时才新增或修改。
+- 记录世界观时，来源有三：该角色本人设定卡中描述的世界运转规则、世界书中对所有人生效的普适世界设定、
+  以及该角色在对话中确实获知的新设定——前两者可直接进入其世界观，后者按获知情况写入；
+  其他角色的私密信息不得写入。记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。
+- 家庭背景/人际关系以该角色本人设定卡为准，可直接补全；对话中明确出现的新信息也新增或更新；记忆仅记录该角色在对话中亲历/被告知/目击的事实。
 - 只在确有依据时才 add；依据模糊时倾向不新增。
 - remove/update 要谨慎，只有在旧条目明显失效或需要纠正时才用。`,
   archivePreScreen: `你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」。
@@ -379,6 +384,44 @@ function migratePromptText(text) {
   next = next.replace(
     '- recent_messages 是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。',
     '- 输入消息里的 <Recent_Messages> 块是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。',
+  );
+  // v0.8.6 起世界书中与角色同名的条目视为「本人设定卡」，可直接补全档案；
+  // 对旧默认文案里「世界书仅作背景、只认对话获知」的五处描述做定点替换，保留用户其余自定义内容。
+  next = next.replace(
+    '档案应尽量完整：能从对话推断的标量字段与 MBTI 性格标签应及时补全，使 AI 能据此完整扮演该角色。',
+    '档案应尽量完整：能从对话或其本人设定推断的标量字段与 MBTI 性格标签应及时补全，使 AI 能据此完整扮演该角色。',
+  );
+  // 该行在世界书注入重构前的旧默认里是「输入内容可能带有…」开头（v0.8.1 时代文案），
+  // v0.8.4 默认改过开头但用户已保存的旧文案仍是旧开头，两种开头都迁移。
+  next = next.replace(
+    '- 输入内容可能带有 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致），\n  是背景补充信息；它们不代表该角色亲历或已知，仅供你了解世界观以便合理推断；\n  是否写入该角色记忆，仍须判断该角色是否真的亲历/被告知/目击。',
+    '- 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）\n  是世界书注入内容，条目通常以「<角色名>…</角色名>」形式分节。其中与 character 同名的条目是该角色本人的设定卡\n  （固有身份、家庭背景、性格、人际关系、世界观），是权威设定来源，可直接用于补全该角色档案；\n  其余条目只是背景信息，不代表该角色亲历或已知，仅供推断该角色可能获知/相信什么，\n  只有该角色确实获知（亲历/被告知/目击）的内容才可写入其档案。',
+  );
+  next = next.replace(
+    '- 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）\n  是世界书背景补充信息；它们不代表该角色亲历或已知，仅供你了解世界观以便合理推断；\n  是否写入该角色记忆，仍须判断该角色是否真的亲历/被告知/目击。',
+    '- 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）\n  是世界书注入内容，条目通常以「<角色名>…</角色名>」形式分节。其中与 character 同名的条目是该角色本人的设定卡\n  （固有身份、家庭背景、性格、人际关系、世界观），是权威设定来源，可直接用于补全该角色档案；\n  其余条目只是背景信息，不代表该角色亲历或已知，仅供推断该角色可能获知/相信什么，\n  只有该角色确实获知（亲历/被告知/目击）的内容才可写入其档案。',
+  );
+  next = next.replace(
+    '- 标量字段（姓名/年龄/性别/职业）与 MBTI 性格标签一旦能从对话推断出，就应补全或更新，保证档案完整、可支撑角色扮演。',
+    '- 标量字段（姓名/年龄/性别/职业）与 MBTI 性格标签一旦能从对话或其本人设定卡推断出，就应补全或更新，保证档案完整、可支撑角色扮演。',
+  );
+  next = next.replace(
+    '- 记录世界观时，可参照输入的 <World_Info_Before> / <World_Info_Extra> / <World_Info_After> 世界背景块\n  判断哪些设定该角色已知或相信；但只有该角色确实获知（亲历/被告知/目击）的设定才应进入其世界观，\n  且应记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。',
+    '- 记录世界观时，该角色本人设定卡中描述的世界运转规则（社会秩序、认主体系、超自然设定、种族矛盾等）\n  可直接进入其世界观；其余世界书背景设定只有在该角色确实获知（亲历/被告知/目击）时才进入，\n  且应记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。',
+  );
+  next = next.replace(
+    '- 家庭背景/人际关系/记忆较稳定，仅在对话给出明确新信息时才新增或修改。',
+    '- 家庭背景/人际关系以该角色本人设定卡为准，可直接补全；对话中明确出现的新信息也新增或更新；记忆仅记录该角色在对话中亲历/被告知/目击的事实。',
+  );
+  // v0.8.7 起世界书按三类处理：本人设定卡（权威）、普适世界设定（默认知晓，写入世界观）、
+  // 其他角色私密信息（仅确实获知才写入）；对 v0.8.6 默认文案的两处描述做定点替换。
+  next = next.replace(
+    '- 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）\n  是世界书注入内容，条目通常以「<角色名>…</角色名>」形式分节。其中与 character 同名的条目是该角色本人的设定卡\n  （固有身份、家庭背景、性格、人际关系、世界观），是权威设定来源，可直接用于补全该角色档案；\n  其余条目只是背景信息，不代表该角色亲历或已知，仅供推断该角色可能获知/相信什么，\n  只有该角色确实获知（亲历/被告知/目击）的内容才可写入其档案。',
+    '- 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）\n  是世界书注入内容，条目通常以「<角色名>…</角色名>」形式分节，按性质分三类：\n  ① 与 character 同名的条目是该角色本人的设定卡（固有身份、家庭背景、性格、人际关系、世界观），\n     是权威设定来源，可直接用于补全该角色档案；\n  ② 普适世界设定（社会秩序、认主体系、魔法/超自然规则、种族矛盾、组织规则等对所有人生效的规则）\n     是该角色作为世界一员默认知晓并相信的常识，应写入其世界观；\n  ③ 其他角色的个人条目与私密信息（其秘密、私事、内心想法、不在场经历）不代表该角色亲历或已知，\n     只有该角色确实获知（亲历/被告知/目击）的内容才可写入其档案。',
+  );
+  next = next.replace(
+    '- 记录世界观时，该角色本人设定卡中描述的世界运转规则（社会秩序、认主体系、超自然设定、种族矛盾等）\n  可直接进入其世界观；其余世界书背景设定只有在该角色确实获知（亲历/被告知/目击）时才进入，\n  且应记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。',
+    '- 记录世界观时，来源有三：该角色本人设定卡中描述的世界运转规则、世界书中对所有人生效的普适世界设定、\n  以及该角色在对话中确实获知的新设定——前两者可直接进入其世界观，后者按获知情况写入；\n  其他角色的私密信息不得写入。记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。',
   );
   return next;
 }
@@ -972,7 +1015,7 @@ const PANEL_VIEW_TITLES = Object.freeze({
   [API_VIEW_ID]: 'API 连接',
   [LOG_VIEW_ID]: '日志系统',
   [PRESET_VIEW_ID]: '预设',
-  [REGISTER_VIEW_ID]: '角色名单',
+  [REGISTER_VIEW_ID]: '角色注册',
   [ARCHIVE_VIEW_ID]: '档案系统',
   [WORLDBOOK_VIEW_ID]: '世界书',
 });
@@ -1008,7 +1051,7 @@ function showPanelView(viewId) {
   }
   if (viewId === REGISTER_VIEW_ID) {
     renderRegisterList();
-    logApp('debug', '打开角色名单视图');
+    logApp('debug', '打开角色注册视图');
   }
   if (viewId === ARCHIVE_VIEW_ID) {
     renderArchiveList();
@@ -1089,9 +1132,9 @@ function createPanel() {
               <span class="soullink-home__card-title">预设</span>
               <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__card-status" data-state="idle">默认配置</span>
             </button>
-            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色名单管理">
+            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色注册管理">
               <span class="soullink-home__card-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">角色名单</span>
+              <span class="soullink-home__card-title">角色注册</span>
               <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无角色</span>
             </button>
             <button type="button" id="${HOME_ARCHIVE_CARD_ID}" class="soullink-home__card soullink-home__card--archive" title="打开档案系统">
@@ -2840,7 +2883,7 @@ function renderArchiveList() {
   if (names.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'soullink-archive__empty';
-    empty.textContent = '名单还是空的 —— 先去「角色名单」注册角色吧。';
+    empty.textContent = '名单还是空的 —— 先去「角色注册」注册角色吧。';
     list.appendChild(empty);
     return;
   }
@@ -3588,8 +3631,10 @@ async function buildArchiveAnalysisMessages(name, archive, prompt) {
     ...(worldBlocks.length > 0 ? [{
       role: 'user',
       content: [
-        '以下是世界书注入内容，包含人物档案与世界背景信息，仅供了解世界观设定，不代表该角色亲历或已知；',
-        '请据此合理推断设定，但只有该角色确实获知的内容才能写入其档案。',
+        '以下是世界书注入内容，包含人物档案与世界背景信息：与 character 同名的条目是该角色本人的设定卡，',
+        '是权威设定来源，可直接用于补全其档案；对所有人生效的普适世界设定（社会秩序、认主体系、超自然规则等）',
+        '是该角色默认知晓的常识，应写入其世界观；其他角色的个人条目与私密信息仅作背景参考，',
+        '只有该角色确实获知的内容才能写入其档案。',
         '',
         worldBlocks.join('\n\n'),
       ].join('\n'),

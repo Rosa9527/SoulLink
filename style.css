@@ -617,7 +617,6 @@ select.soullink-input {
 }
 
 .soullink-home__card--preset {
-  grid-column: 1 / -1;
   border-radius: 15px 255px 15px 235px / 235px 15px 255px 15px;
   transform: rotate(-0.9deg);
 }
@@ -1158,7 +1157,7 @@ select.soullink-input {
 .soullink-panel__link:hover {
   color: var(--sl-pink);
 }
-/* ---------- 角色名单（注册系统） ---------- */
+/* ---------- 角色注册（注册系统） ---------- */
 .soullink-home__card--register {
   border-radius: 235px 15px 255px 15px / 15px 255px 15px 235px;
   transform: rotate(1.2deg);
