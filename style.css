@@ -147,38 +147,6 @@
   transform: rotate(0deg);
 }
 
-/* 上下两段贴纸胶带 */
-.soullink-panel__dialog::before,
-.soullink-panel__dialog::after {
-  content: '';
-  position: absolute;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.soullink-panel__dialog::before {
-  top: -13px;
-  left: 50%;
-  width: 108px;
-  height: 28px;
-  transform: translateX(-50%) rotate(-2.5deg);
-  background: rgba(242, 193, 78, 0.55);
-  border-right: 1px dashed rgba(61, 43, 31, 0.2);
-  border-left: 1px dashed rgba(61, 43, 31, 0.2);
-  clip-path: polygon(2% 8%, 98% 0%, 100% 40%, 97% 90%, 4% 100%, 0% 52%);
-}
-
-.soullink-panel__dialog::after {
-  bottom: -12px;
-  left: 50%;
-  width: 92px;
-  height: 24px;
-  transform: translateX(-50%) rotate(2deg);
-  background: rgba(229, 107, 111, 0.55);
-  border-right: 1px dashed rgba(61, 43, 31, 0.18);
-  border-left: 1px dashed rgba(61, 43, 31, 0.18);
-  clip-path: polygon(3% 0%, 97% 6%, 100% 46%, 96% 100%, 2% 94%, 0% 48%);
-}
 
 .soullink-panel__header {
   position: relative;
