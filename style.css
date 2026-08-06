@@ -148,6 +148,60 @@
 }
 
 
+/* ---------- 确认弹层：宿主 confirm 被 ACL 拦截，自绘 ---------- */
+.soullink-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: rgba(61, 43, 31, 0.35);
+}
+
+.soullink-confirm.is-open {
+  display: flex;
+}
+
+.soullink-confirm__card {
+  width: min(300px, calc(100vw - 48px));
+  padding: 18px 16px 16px;
+  text-align: center;
+  font-family: var(--sl-font);
+  font-size: 14px;
+  color: var(--sl-ink);
+  background: var(--sl-paper);
+  border: 3px solid var(--sl-ink);
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  box-shadow:
+    8px 9px 0 rgba(61, 43, 31, 0.16),
+    0 18px 34px rgba(61, 43, 31, 0.28);
+  filter: url(#soullink-wobble);
+  transform: rotate(-0.6deg);
+}
+
+.soullink-confirm__message {
+  margin: 0 0 16px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.soullink-confirm__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.soullink-confirm__actions .soullink-btn {
+  flex: 1;
+}
+
+.soullink-confirm__cancel.soullink-btn {
+  color: var(--sl-ink);
+  background: var(--sl-paper-deep);
+}
+
+
 .soullink-panel__header {
   position: relative;
   display: flex;
@@ -1788,4 +1842,37 @@ select.soullink-input {
   border-color: rgba(120, 120, 120, 0.6);
   background: rgba(120, 120, 120, 0.12);
   text-decoration: line-through;
+}
+
+/* ---------- 角色注册：发送前角色推演开关 ---------- */
+.soullink-register__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+}
+
+.soullink-register__npc-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 255px;
+  color: var(--sl-pink);
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid rgba(229, 107, 111, 0.7);
+  transform: rotate(0.5deg);
+}
+
+.soullink-register__npc-status[data-state='ok'] {
+  color: #4f7a33;
+  border-color: rgba(123, 160, 91, 0.9);
+  background: rgba(123, 160, 91, 0.18);
+}
+
+.soullink-register__npc-toggle.is-active {
+  border-color: var(--sl-green);
+  color: #4f7a33;
+  background: rgba(123, 160, 91, 0.18);
 }

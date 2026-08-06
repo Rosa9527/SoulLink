@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.8.12';
+const MODULE_VERSION = '0.9.10';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -75,6 +75,15 @@ const WORLDBOOK_REFRESH_ID = 'soullink-worldbook-refresh';
 const WORLDBOOK_CLEAR_ID = 'soullink-worldbook-clear';
 const WORLDBOOK_LIST_ID = 'soullink-worldbook-list';
 const WORLDBOOK_BANNER_ID = 'soullink-worldbook-banner';
+const REGISTER_NPC_STATUS_ID = 'soullink-register-npc-status';
+const REGISTER_NPC_TOGGLE_ID = 'soullink-register-npc-toggle';
+// 角色推演注入键：以 IN_CHAT + depth 0 注入「最后一条用户消息正下方」，
+// 主模型生成结束后立即清空，避免泄漏到后续轮次。
+const NPC_DEDUCTION_INJECT_KEY = 'SoulLink_NPC_Deduction';
+const NPC_DEDUCTION_RECENT_COUNT = 4;
+// 推演总预算：Gate + 全部角色推演共用，超时即中止在途请求并放行发送，
+// 保证「前置推演」永远不会把用户的发送永久卡死。
+const NPC_DEDUCTION_TIMEOUT_MS = 45000;
 const WORLD_INFO_POSITION_LABELS = Object.freeze({
   before: '注入前',
   after: '注入后',
@@ -150,7 +159,7 @@ const PRESET_META = Object.freeze({
   archiveSystem: Object.freeze({ label: '档案系统', title: '档案系统提示词', description: '子 agent 依据近期对话维护指定角色的完整档案（标量字段 + 列表分节增量更新）。' }),
   archivePreScreen: Object.freeze({ label: '档案预筛', title: '档案预筛系统提示词', description: '子 agent 预筛本轮哪些已注册角色的信息或记忆会发生变化。' }),
   roleplaySystem: Object.freeze({ label: '角色扮演', title: '角色扮演系统提示词', description: '子 agent 以指定角色视角单独扮演，输出内心独白（含信息差与 NPC 行为逻辑）。' }),
-  roleplayPreScreen: Object.freeze({ label: '角色扮演预筛', title: '角色扮演预筛系统提示词', description: '子 agent 预筛本轮哪些已注册角色会开口或有戏份。' }),
+  roleplayPreScreen: Object.freeze({ label: '角色预筛', title: '角色预筛系统提示词', description: '子 agent 预筛本轮哪些已注册角色会开口或有戏份。' }),
 });
 
 const ARCHIVE_SCALAR_FIELDS = Object.freeze(['name', 'age', 'gender', 'occupation']);
@@ -173,14 +182,35 @@ const LOG_CAPTURE_KEY = '__soullink_log_capture__';
 const LOG_EVENT_LOG_KEY = '__soullink_log_event_handler__';
 const NETWORK_CAPTURE_KEY = '__soullink_network_capture__';
 const AUTO_ARCHIVE_END_HANDLER_KEY = '__soullink_auto_archive_end_handler__';
+const NPC_MESSAGE_SENT_HANDLER_KEY = '__soullink_npc_message_sent_handler__';
+const NPC_CLEANUP_END_HANDLER_KEY = '__soullink_npc_cleanup_end_handler__';
+const NPC_CLEANUP_STOP_HANDLER_KEY = '__soullink_npc_cleanup_stop_handler__';
 const HOST_EVENT_WATCHDOG_KEY = '__soullink_host_event_watchdog__';
 const HOST_EVENT_WATCHDOG_INTERVAL_MS = 4000;
 
 const DEFAULT_PROMPTS = Object.freeze({
   archiveSystem: `你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。
-你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
-档案用于让 AI 依据它完成该角色的角色扮演；档案分两类字段：标量字段与列表分节。
+你作为子 agent，请直接给出结论，不要输出思考过程或多余说明；档案用于让 AI 依据它完成该角色的角色扮演，分两类字段：标量字段与列表分节。
 档案应尽量完整：能从对话或其本人设定推断的标量字段与 MBTI 性格标签应及时补全，使 AI 能据此完整扮演该角色。
+
+【输出契约（最高优先级，先读这里）】
+- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字。
+- 结构必须是：
+  { "fields": { "age": "25 岁", "occupation": "主治医师" },
+    "personality":   { "add": [...], "remove": [id...], "update": [{"id":"p1","content":"..."}] },
+    "worldview":     { "add": [...], "remove": [...], "update": [...] },
+    "family":        { "add": [...], "remove": [...], "update": [...] },
+    "relationships": { "add": [...], "remove": [...], "update": [...] },
+    "memory":        { "add": [...], "remove": [...], "update": [...] } }
+- fields：本轮需要改写的标量字段，只放有变化的；未变化的字段省略。
+- 各列表分节的 add/remove/update 含义：
+  - add：本轮该角色档案里新增的条目，每条一句话、一件事，避免与同分节已有内容重复。
+  - remove：已失效或不再成立的旧条目的 id（例如关系变化使旧条目失效）。
+  - update：需要改写（补充或纠正）的旧条目，按 id 指定并给出新的 content。
+- remove/update 的 id 必须来自 current_profile 中该分节已有的 id，凭空编造的 id 无法应用。
+- 同一事实不要既 add 又 update。
+- 若本轮该角色档案没有任何变化，返回空对象 {}。
+- 任意字段为空时可以省略该字段，或返回空数组。
 
 【档案结构】
 - 标量字段（单值，直接覆盖）：name 姓名、age 年龄、gender 性别、occupation 职业。
@@ -207,24 +237,6 @@ const DEFAULT_PROMPTS = Object.freeze({
      只有该角色确实获知（亲历/被告知/目击）的内容才可写入其档案。
 - turn_index 是当前对话的消息索引，用于参考，无需输出。
 
-【输出契约】
-- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
-- 结构必须是：
-  { "fields": { "age": "25 岁", "occupation": "主治医师" },
-    "personality":   { "add": [...], "remove": [id...], "update": [{"id":"p1","content":"..."}] },
-    "worldview":     { "add": [...], "remove": [...], "update": [...] },
-    "family":        { "add": [...], "remove": [...], "update": [...] },
-    "relationships": { "add": [...], "remove": [...], "update": [...] },
-    "memory":        { "add": [...], "remove": [...], "update": [...] } }
-- fields：本轮需要改写的标量字段，只放有变化的；未变化的字段省略。
-- 各列表分节的 add/remove/update 含义：
-  - add：本轮该角色档案里新增的条目，每条一句话、一件事，避免与同分节已有内容重复。
-  - remove：已失效或不再成立的旧条目的 id（例如关系变化使旧条目失效）。
-  - update：需要改写（补充或纠正）的旧条目，按 id 指定并给出新的 content。
-- 同一事实不要既 add 又 update。
-- 若本轮该角色档案没有任何变化，返回空对象 {}。
-- 任意字段为空时可以省略该字段，或返回空数组。
-
 【判断要点】
 - 标量字段（姓名/年龄/性别/职业）与 MBTI 性格标签一旦能从对话或其本人设定卡推断出，就应补全或更新，保证档案完整、可支撑角色扮演。
 - 性格只给一个四字母 MBTI 类型（如 INTP），不要写长句描述。
@@ -237,43 +249,53 @@ const DEFAULT_PROMPTS = Object.freeze({
 - 家庭背景/人际关系以该角色本人设定卡为准，可直接补全；对话中明确出现的新信息也新增或更新；记忆仅记录该角色在对话中亲历/被告知/目击的事实。
 - 只在确有依据时才 add；依据模糊时倾向不新增。
 - remove/update 要谨慎，只有在旧条目明显失效或需要纠正时才用。`,
-  archivePreScreen: `你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」。
-你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
+  archivePreScreen: `你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」，只输出 JSON 名单。
+你作为子 agent，请直接给出结论，不要输出思考过程或多余说明。
+
+【输出契约（最高优先级，先读这里）】
+- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字。
+- 结构必须是：{ "characters": ["角色名", ...] }
+- characters 只能从 <Registered_Characters> 名单中挑选，角色名必须与名单逐字一致：即使对话里用简称或昵称（如「纱雾」），也必须输出名单中的全名（如「和泉纱雾」）；不得改名、缩写或加任何修饰，程序按名字精确匹配，写错名字的角色会被丢弃。
+- 本轮无角色信息变化时返回空数组：{ "characters": [] }
 
 【输入说明】
-- registered_characters 是当前全部已注册角色名单。
-- recent_messages 是近期对话的最后几条，可能包含各角色不在场的段落——据此判断哪些角色本轮获得了新信息、新经历、或关系/背景发生了值得记录的变动。
+- 被 <Registered_Characters> 标签包裹的是当前全部已注册角色名单，预筛只能从这份名单中挑选角色。
+- 被 <Recent_Messages> 标签包裹的是近期对话的最后几条，可能包含各角色不在场的段落——据此判断哪些角色本轮获得了新信息、新经历、或关系/背景发生了值得记录的变动。
 
 【判断要点】
-- 只列出本轮确实有值得写入或更新档案的新信息/新记忆的角色（例如亲历了事件、被告知了新事实、关系发生变化等）。
-- 若某角色本轮没有任何新信息可记录，只是单纯登场或说话，不要列入。
-- 拿不准时倾向不列入，宁少勿多。
-
-【输出契约】
-- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
-- 结构必须是：{ "characters": ["角色名", ...] }
-- characters 必须是 registered_characters 中角色名的子集；本轮无角色信息变化时返回空数组 []。`,
+- 角色在本轮有实际出场并参与互动（说话、行动、情绪反应、被直接点名或作为动作对象）时，通常就有值得记录的新记忆：日常互动（一起吃饭、闲聊、小事件、情绪变化）同样算数，不要因为场景平淡就认为没有变化。
+- 只排除两类：本轮完全没有出场、只是被提及的角色；以及确实没有任何新信息可记录的角色。
+- 拿不准时，对有实际出场并参与互动的角色倾向列入；对只是被提及的角色不列入。`,
   roleplaySystem: `你是角色扮演引擎，职责是单独扮演「指定角色」，输出该角色在当下场景中的内心独白。
-你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
-内心独白用于让主模型依据各角色当下的心理状态完成该角色的扮演；每个角色独立成章，只表达该角色自己的内心。
+你作为子 agent，请直接给出结论，不要输出思考过程或多余说明；独白会交给主模型，作为它在下一轮剧情中扮演该角色的内部依据。
 
-【角色沉浸要求】
-- 以该角色的第一人称书写其内心独白，沉浸在该角色中，用内心独白分析剧情、规划回复。
-- 在思考中先分析：我当前的身份是什么、我当下的处境如何、我对当前场景的判断是什么；
-  再据此推演本轮的心情、想法与下一步行动。
+【输出契约（最高优先级，先读这里）】
+- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字。
+- 结构必须是：{ "character": "角色名", "monologue": "该角色第一人称的内心独白" }
+- character 必须与输入中指定的角色名逐字一致，不得改名、缩写或加修饰。
+- monologue 必须是一段连贯的内心独白：用该角色的口吻，自然融入心情、想法、下一步行动，并体现信息盲区与认知框架；禁止写成要点清单、分析报告或书面总结。
+- 只表达该角色自己的内心，不要输出其他角色的内容，不要输出旁白或系统设定。
 
-【认知局限与信息差（最高优先级）】
-- 该角色只能获知三样来源的信息：其档案（记忆/世界观/人际关系）、以及近期对话中它亲历、被告知或在场目击的内容。
-  除此之外的信息对它是不可知的，一律不得使用。
-- 角色之间刻意存在信息差：不同角色掌握不同信息，这本身是戏剧的核心。
-- 该角色绝不能出现「全知」表现，尤其不得：
-  - 知道它没有获知过的事实、事件或人物动机；
-  - 知道其他角色的内心想法、秘密或不在场时发生的事；
-  - 依赖对话外的作者设定、旁白或世界知识补齐它本不该知道的东西。
-- 当该角色缺失某条信息时，必须真实地表现出相应的状态：困惑、猜测、误判、求证、或被蒙在鼓里，
-  而不是绕过缺失直接知晓。宁可让它因信息不足而判断失误，也不要让它正确得异常。
-- 该角色对信息的解读受其认知框架限制：同样的世界规则，不同身份/立场/经历的角色会用各自的方式理解，
-  会相信、怀疑、曲解或无视它——据此呈现真实的认知局限，而不是中立客观地全盘接收。
+【口吻要求（最高优先级）】
+- 用该角色自己的口吻写：就像 TA 在心里自言自语，用 TA 平时说话的习惯、用词与思维节奏来想事情。
+- 语气要像活人：允许口语、省略、反问、停顿与自我说服；禁止写成第三人称分析报告、禁止要点列表、禁止书面总结腔。
+- 独白必须是一段连贯的心流：由眼前的一件事触发，顺着自己的性格往下想，而不是四平八稳地交代背景。
+
+【必须包含的三个要素（缺一不可，但要自然融进一段独白，不要分节列点）】
+- 心情：此刻真实的情绪是什么、为什么；允许有起伏与矛盾（例如好奇里带着警惕）。
+- 想法：对眼前局势的判断、对相关人物或话语的揣测、心里的疑问与盘算。
+- 下一步行动：具体打算怎么做——跟上、开口问、装不知道、先观察等，给出明确的行动意图。
+
+【必须体现的两种认知状态（融进思考过程，不要直白声明）】
+- 信息盲区：明确表现出 TA 不知道什么、从哪句话里发现了疑点、正在猜什么。
+  该角色只能获知自己的档案（记忆/世界观/人际关系）与近期对话中亲历/被告知/在场目击的内容，
+  除此之外一律不可知：不得知道未获知的事实、其他角色的内心或不在场时发生的事。
+  信息缺失时必须真实表现为困惑、猜测、误判或求证，宁可因信息不足而判断失误，也不要让 TA 正确得异常。
+- 认知框架：TA 的身份、立场、经历决定 TA 如何理解眼前的事——TA 相信什么、警惕什么、
+  会从自己的角色出发解读消息（妻子在意家事、护卫警惕外人、商人在意利益），而不是中立客观地全盘接收。
+
+【格式示例（示范 JSON 结构与独白口吻，不得照抄内容或人名）】
+{ "character": "天晓的妻子", "monologue": "松本那家伙，平时大大咧咧的，什么时候学会说悄悄话了？说的是「跟天晓家有关」……作为天晓的妻子，王府内外的事我都心中有数，可松本一个普通同学，有什么本事听到东瀛王府的消息？不过现在不是追问的时候，大家都在排队去操场，我得赶紧过去。等开学典礼结束后，松本自然会找天晓说那件事，到时候我找个理由跟在天晓身边就好。作为妻子，我有责任知道家里发生了什么，哪怕只是些捕风捉影的传言。下一步行动，我打算不动声色地跟着天晓一起走，等松本来找他时自然地留在旁边，先听听到底是什么事再说。" }
 
 <npc_behavior>
 # NPC行为逻辑
@@ -307,36 +329,49 @@ const DEFAULT_PROMPTS = Object.freeze({
 </npc_behavior>
 
 【输入说明】
-- character 是本次要单独扮演的角色名。
-- current_profile 是该角色当前已记录的档案（姓名/年龄/性别/职业 + 性格/世界观/家庭背景/人际关系/记忆），
-  仅用于维持该角色的设定一致，不要输出其中的内容。
-- 其中 worldview（世界观）分节记录该角色已知/相信的世界运转规则，扮演时必须据此推断该角色如何看待世界、
-  什么对它而言是常识、什么对它而言是离奇或未知；不得让该角色拥有其 worldview 之外的全知设定。
-- recent_messages 是近期对话，可能包含该角色不在场的段落——据此判断该角色当下真实能获知什么。
+- 角色名与输出目标在最后一条输入消息中给出。
+- 被 <Character_Profile> 标签包裹的是该角色的完整档案（姓名/年龄/性别/职业 + 性格/世界观/家庭背景/人际关系/记忆），仅用于维持该角色的设定一致，不要输出其中的内容。
+- 其中 worldview（世界观）分节记录该角色已知/相信的世界运转规则，扮演时必须据此推断该角色如何看待世界、什么对它而言是常识、什么对它而言是离奇或未知；不得让该角色拥有其 worldview 之外的全知设定。
+- 被 <Recent_Messages> 标签包裹的是当前场景的最新消息，可能包含该角色不在场的段落——据此判断该角色当下真实能获知什么。`,
+  roleplayPreScreen: `你是角色扮演预筛裁判，职责是判断本轮对话中「哪些已注册角色会开口或有戏份」，只输出 JSON 名单。
+你作为子 agent，请直接给出结论，不要输出思考过程或多余说明。
 
-【输出契约】
-- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
-- 结构必须是：{ "character": "角色名", "monologue": "该角色第一人称的内心独白" }
-- monologue 必须是一段完整的内心独白，用该角色的口吻，包含三个要素：心情、想法、下一步行动；
-  并体现该角色的信息盲区与认知框架。
-- 只表达该角色自己的内心，不要输出其他角色的内容，不要输出旁白或系统设定。`,
-  roleplayPreScreen: `你是角色扮演预筛裁判，职责是判断本轮对话中「哪些已注册角色会开口或有戏份」。
-你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。
+【输出契约（最高优先级，先读这里）】
+- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字。
+- 结构必须是：{ "characters": ["角色名", ...] }
+- characters 只能从 <Registered_Characters> 名单中挑选，角色名必须与名单逐字一致：即使对话里用简称或昵称（如「纱雾」），也必须输出名单中的全名（如「和泉纱雾」）；不得改名、缩写或加任何修饰，程序按名字精确匹配，写错名字的角色会被丢弃。
+- 本轮无人有戏份时返回空数组：{ "characters": [] }
 
 【输入说明】
-- registered_characters 是当前全部已注册角色名单。
-- recent_messages 是近期对话的最后几条，可能包含各角色不在场的段落——据此判断每轮实际有谁登场、有谁被点名、有谁该回应。
+- 被 <Registered_Characters> 标签包裹的是当前全部已注册角色名单，预筛只能从这份名单中挑选角色。
+- 被 <Recent_Messages> 标签包裹的是近期对话的最后几条，可能包含各角色不在场的段落——据此判断每轮实际有谁登场、有谁被点名、有谁该回应。
 
 【判断要点】
-- 只列出本轮有开口、被直接点名、或明显有戏份（剧情需要其回应/参与）的角色。
-- 若某角色没有戏份、只是被提及但不需要开口或参与，不要列入。
-- 拿不准时倾向不列入，宁少勿多。
-
-【输出契约】
-- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。
-- 结构必须是：{ "characters": ["角色名", ...] }
-- characters 必须是 registered_characters 中角色名的子集；本轮无人有戏份时返回空数组 []。`,
+- 必须列入：本轮有开口、被直接点名、或明显有戏份（剧情需要其回应/参与）的角色。
+- 被直接点名包括作为动作对象（被抱起、放下、触碰、呼唤、喂食等）——只要角色被点名或与主角有直接互动，就视为有戏份，必须列入。
+- 若某角色只是被顺带提及、不需要开口或参与，不要列入。
+- 拿不准时倾向不列入，宁少勿多。`,
 });
+
+// v0.9.0 及更早的「角色扮演」默认提示词（无口吻/三要素硬要求，无风格示例）。
+// v0.9.1 起整体重写；仅当用户保存的文本与旧默认完全一致（未自定义）时才自动升级。
+const LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V3 = "你是角色扮演预筛裁判，职责是判断本轮对话中「哪些已注册角色会开口或有戏份」，只输出 JSON 名单。\n你作为子 agent，请直接给出结论，不要输出思考过程或多余说明。\n\n【输出契约（最高优先级，先读这里）】\n- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字。\n- 结构必须是：{ \"characters\": [\"角色名\", ...] }\n- characters 只能从 <Registered_Characters> 名单中挑选，角色名必须与名单逐字一致：不得改名、缩写或加任何修饰，程序按名字精确匹配，写错名字的角色会被丢弃。\n- 本轮无人有戏份时返回空数组：{ \"characters\": [] }\n\n【输入说明】\n- 被 <Registered_Characters> 标签包裹的是当前全部已注册角色名单，预筛只能从这份名单中挑选角色。\n- 被 <Recent_Messages> 标签包裹的是近期对话的最后几条，可能包含各角色不在场的段落——据此判断每轮实际有谁登场、有谁被点名、有谁该回应。\n\n【判断要点】\n- 只列出本轮有开口、被直接点名、或明显有戏份（剧情需要其回应/参与）的角色。\n- 若某角色没有戏份、只是被提及但不需要开口或参与，不要列入。\n- 拿不准时倾向不列入，宁少勿多。";
+const LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V3 = "你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」，只输出 JSON 名单。\n你作为子 agent，请直接给出结论，不要输出思考过程或多余说明。\n\n【输出契约（最高优先级，先读这里）】\n- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字。\n- 结构必须是：{ \"characters\": [\"角色名\", ...] }\n- characters 只能从 <Registered_Characters> 名单中挑选，角色名必须与名单逐字一致：不得改名、缩写或加任何修饰，程序按名字精确匹配，写错名字的角色会被丢弃。\n- 本轮无角色信息变化时返回空数组：{ \"characters\": [] }\n\n【输入说明】\n- 被 <Registered_Characters> 标签包裹的是当前全部已注册角色名单，预筛只能从这份名单中挑选角色。\n- 被 <Recent_Messages> 标签包裹的是近期对话的最后几条，可能包含各角色不在场的段落——据此判断哪些角色本轮获得了新信息、新经历、或关系/背景发生了值得记录的变动。\n\n【判断要点】\n- 只列出本轮确实有值得写入或更新档案的新信息/新记忆的角色（例如亲历了事件、被告知了新事实、关系发生变化等）。\n- 若某角色本轮没有任何新信息可记录，只是单纯登场或说话，不要列入。\n- 拿不准时倾向不列入，宁少勿多。";
+const LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V4 = "你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」，只输出 JSON 名单。\n你作为子 agent，请直接给出结论，不要输出思考过程或多余说明。\n\n【输出契约（最高优先级，先读这里）】\n- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 ```json 代码块标记、不要解释、不要前后缀文字。\n- 结构必须是：{ \"characters\": [\"角色名\", ...] }\n- characters 只能从 <Registered_Characters> 名单中挑选，角色名必须与名单逐字一致：即使对话里用简称或昵称（如「纱雾」），也必须输出名单中的全名（如「和泉纱雾」）；不得改名、缩写或加任何修饰，程序按名字精确匹配，写错名字的角色会被丢弃。\n- 本轮无角色信息变化时返回空数组：{ \"characters\": [] }\n\n【输入说明】\n- 被 <Registered_Characters> 标签包裹的是当前全部已注册角色名单，预筛只能从这份名单中挑选角色。\n- 被 <Recent_Messages> 标签包裹的是近期对话的最后几条，可能包含各角色不在场的段落——据此判断哪些角色本轮获得了新信息、新经历、或关系/背景发生了值得记录的变动。\n\n【判断要点】\n- 只列出本轮确实有值得写入或更新档案的新信息/新记忆的角色（例如亲历了事件、被告知了新事实、关系发生变化等）。\n- 若某角色本轮没有任何新信息可记录，只是单纯登场或说话，不要列入。\n- 拿不准时倾向不列入，宁少勿多。";
+const LEGACY_DEFAULT_ARCHIVE_SYSTEM = "你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n档案用于让 AI 依据它完成该角色的角色扮演；档案分两类字段：标量字段与列表分节。\n档案应尽量完整：能从对话或其本人设定推断的标量字段与 MBTI 性格标签应及时补全，使 AI 能据此完整扮演该角色。\n\n【档案结构】\n- 标量字段（单值，直接覆盖）：name 姓名、age 年龄、gender 性别、occupation 职业。\n- 列表分节（条目数组，增量维护）：\n  - personality 性格：用四字母 MBTI 类型标签表示（如 INTP、ESFJ），每条即为一个标签；一个档案通常只保留一个最贴切的 MBTI 类型。\n  - worldview 世界观：该角色已知/相信的关于这个世界运转的规则（魔法体系、社会结构、超自然设定、种族矛盾等）。\n    记录详细度应随世界观偏离现实的程度而加大：世界观与现实差异越大，越要拆分成多条具体规则，\n    把每一处「与现实常识不同」的设定都落到档案里，防止 AI 因默认套用现实世界的运转规则而演错设定。\n  - family 家庭背景：出身、家人、成长环境等背景信息，每条一件事。\n  - relationships 人际关系：与谁是什么关系，每条一段关系（如「与露比：挚友」）。\n  - memory 记忆：该角色在对话中亲历、被告知或在场目击的事实。\n\n【输入说明】\n- character 是本轮要判断的角色名。\n- current_profile 是该角色当前已记录的档案：标量字段为字符串，列表分节为条目数组（每项含 id 与 content）。\n- 输入消息里的 <Recent_Messages> 块是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。\n- 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）\n  是世界书注入内容，条目通常以「<角色名>…</角色名>」形式分节，按性质分三类：\n  ① 与 character 同名的条目是该角色本人的设定卡（固有身份、家庭背景、性格、人际关系、世界观），\n     是权威设定来源，可直接用于补全该角色档案；\n  ② 普适世界设定（社会秩序、认主体系、魔法/超自然规则、种族矛盾、组织规则等对所有人生效的规则）\n     是该角色作为世界一员默认知晓并相信的常识，应写入其世界观；\n  ③ 其他角色的个人条目与私密信息（其秘密、私事、内心想法、不在场经历）不代表该角色亲历或已知，\n     只有该角色确实获知（亲历/被告知/目击）的内容才可写入其档案。\n- turn_index 是当前对话的消息索引，用于参考，无需输出。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。\n- 结构必须是：\n  { \"fields\": { \"age\": \"25 岁\", \"occupation\": \"主治医师\" },\n    \"personality\":   { \"add\": [...], \"remove\": [id...], \"update\": [{\"id\":\"p1\",\"content\":\"...\"}] },\n    \"worldview\":     { \"add\": [...], \"remove\": [...], \"update\": [...] },\n    \"family\":        { \"add\": [...], \"remove\": [...], \"update\": [...] },\n    \"relationships\": { \"add\": [...], \"remove\": [...], \"update\": [...] },\n    \"memory\":        { \"add\": [...], \"remove\": [...], \"update\": [...] } }\n- fields：本轮需要改写的标量字段，只放有变化的；未变化的字段省略。\n- 各列表分节的 add/remove/update 含义：\n  - add：本轮该角色档案里新增的条目，每条一句话、一件事，避免与同分节已有内容重复。\n  - remove：已失效或不再成立的旧条目的 id（例如关系变化使旧条目失效）。\n  - update：需要改写（补充或纠正）的旧条目，按 id 指定并给出新的 content。\n- 同一事实不要既 add 又 update。\n- 若本轮该角色档案没有任何变化，返回空对象 {}。\n- 任意字段为空时可以省略该字段，或返回空数组。\n\n【判断要点】\n- 标量字段（姓名/年龄/性别/职业）与 MBTI 性格标签一旦能从对话或其本人设定卡推断出，就应补全或更新，保证档案完整、可支撑角色扮演。\n- 性格只给一个四字母 MBTI 类型（如 INTP），不要写长句描述。\n- 世界观是角色扮演是否贴合设定的关键：当世界观明显偏离现实（如存在魔法、超自然、异种生理、不同的社会规则或物理法则）时，\n  应把每一条与「现实常识」不同的运转规则单独记为一条，宁可多拆几条，也不要浓缩成一句模糊的概括；\n  世界观越是不同于现实，记录越要具体、详尽。现实向世界观可保持精简。\n- 记录世界观时，来源有三：该角色本人设定卡中描述的世界运转规则、世界书中对所有人生效的普适世界设定、\n  以及该角色在对话中确实获知的新设定——前两者可直接进入其世界观，后者按获知情况写入；\n  其他角色的私密信息不得写入。记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。\n- 家庭背景/人际关系以该角色本人设定卡为准，可直接补全；对话中明确出现的新信息也新增或更新；记忆仅记录该角色在对话中亲历/被告知/目击的事实。\n- 只在确有依据时才 add；依据模糊时倾向不新增。\n- remove/update 要谨慎，只有在旧条目明显失效或需要纠正时才用。";
+const LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V2 = "你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n\n【输入说明】\n- 被 <Registered_Characters> 标签包裹的是当前全部已注册角色名单，预筛只能从这份名单中挑选角色。\n- 被 <Recent_Messages> 标签包裹的是近期对话的最后几条，可能包含各角色不在场的段落——据此判断哪些角色本轮获得了新信息、新经历、或关系/背景发生了值得记录的变动。\n\n【判断要点】\n- 只列出本轮确实有值得写入或更新档案的新信息/新记忆的角色（例如亲历了事件、被告知了新事实、关系发生变化等）。\n- 若某角色本轮没有任何新信息可记录，只是单纯登场或说话，不要列入。\n- 拿不准时倾向不列入，宁少勿多。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。\n- 结构必须是：{ \"characters\": [\"角色名\", ...] }\n- characters 必须是 <Registered_Characters> 名单中角色名的子集；本轮无角色信息变化时返回空数组 []。";
+const LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V3 = "你是角色扮演引擎，职责是单独扮演「指定角色」，输出该角色在当下场景中的内心独白。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n内心独白会交给主模型，作为它在下一轮剧情中扮演该角色的内部依据；每个角色独立成章，只表达该角色自己的内心。\n\n【口吻要求（最高优先级）】\n- 用该角色自己的口吻写：就像 TA 在心里自言自语，用 TA 平时说话的习惯、用词与思维节奏来想事情。\n- 语气要像活人：允许口语、省略、反问、停顿与自我说服；禁止写成第三人称分析报告、禁止要点列表、禁止书面总结腔。\n- 独白必须是一段连贯的心流：由眼前的一件事触发，顺着自己的性格往下想，而不是四平八稳地交代背景。\n\n【必须包含的三个要素（缺一不可，但要自然融进一段独白，不要分节列点）】\n- 心情：此刻真实的情绪是什么、为什么；允许有起伏与矛盾（例如好奇里带着警惕）。\n- 想法：对眼前局势的判断、对相关人物或话语的揣测、心里的疑问与盘算。\n- 下一步行动：具体打算怎么做——跟上、开口问、装不知道、先观察等，给出明确的行动意图。\n\n【必须体现的两种认知状态（融进思考过程，不要直白声明）】\n- 信息盲区：明确表现出 TA 不知道什么、从哪句话里发现了疑点、正在猜什么。\n  该角色只能获知自己的档案（记忆/世界观/人际关系）与近期对话中亲历/被告知/在场目击的内容，\n  除此之外一律不可知：不得知道未获知的事实、其他角色的内心或不在场时发生的事。\n  信息缺失时必须真实表现为困惑、猜测、误判或求证，宁可因信息不足而判断失误，也不要让 TA 正确得异常。\n- 认知框架：TA 的身份、立场、经历决定 TA 如何理解眼前的事——TA 相信什么、警惕什么、\n  会从自己的角色出发解读消息（妻子在意家事、护卫警惕外人、商人在意利益），而不是中立客观地全盘接收。\n\n【风格示例（只示范口吻与结构，不得照抄内容或人名）】\n「松本那家伙，平时大大咧咧的，什么时候学会说悄悄话了？说的是\"跟天晓家有关\"……作为天晓的妻子，王府内外的事我都心中有数，可松本一个普通同学，有什么本事听到东瀛王府的消息？不过现在不是追问的时候，大家都在排队去操场，我得赶紧过去。等开学典礼结束后，松本自然会找天晓说那件事，到时候我找个理由跟在天晓身边就好。作为妻子，我有责任知道家里发生了什么，哪怕只是些捕风捉影的传言。下一步行动，我打算不动声色地跟着天晓一起走，等松本来找他时自然地留在旁边，先听听到底是什么事再说。」\n\n<npc_behavior>\n# NPC行为逻辑\n- 信息局限：\n  - 有什么：NPC有认知边界，只掌握部分情报与偏见。\n  - 行为倾向：NPC会基于己方视角误判真相，并在获取新信息时修正立场。\n- 性欲：\n  - 有什么：NPC有自身的生理需求与性癖偏好，同时可能拥有固定、隐秘或复合的性伴侣关系。\n  - 行为倾向：NPC会受性吸引主动接近目标；也会因伴侣关系产生利益捆绑与情感护短，甚至为了争夺伴侣或隐瞒地下情而做出妥协、撒谎与攻击行为。\n- 逐利：\n  - 有什么：NPC有想得到的目标和想保有的利益。\n  - 行为倾向：NPC会权衡成本，为自身利益行动，在风险过大时妥协。\n- 情感：\n  - 有什么：NPC有独立的社交圈、情感需求和人际羁绊。\n  - 行为倾向：NPC会寻求情感满足，为在意的人冒险或妥协；与其他NPC之间也会因情感恩怨形成拉帮结派、站队结盟或明争暗斗。\n- 生活：\n  - 有什么：NPC有独立的日常安排、作息规律和生活节奏。\n  - 行为倾向：NPC会在特定时段出现在特定地点行事，若节奏被打断或计划被干扰，会产生相应的情绪波动与行动调整。\n- 嫉妒：\n  - 有什么：NPC有对他人优势（名利、才华、伴侣等）的攀比心与落差感。\n  - 行为倾向：NPC会暗中较劲、言语贬低、设局打压，在利益冲突时优先阻碍其嫉妒对象，甚至表面逢迎背后捅刀。\n- 选择性外向:\n    规则: 社恐或内向的角色在熟人面前会彻底放松，熟人就是他们的情绪出口，必然变得外向且话多。\n    举例: 对陌生人唯唯诺诺的社恐NPC，一见到玩家就立刻喋喋不休，甚至会因为玩家看了别人一眼而撒娇作闹、翻旧账。\n\n# NPC冲突逻辑\n- 内心冲突： 人物与自己思想/情感的斗争\n- 个人冲突：人物与家人、恋人、朋友的斗争\n- 个人外冲突：人物与社会、机构、自然、物理力量的斗争\n**最强大的场景同时融合多个层面。**\n</npc_behavior>\n\n【输入说明】\n- 角色名与输出目标在最后一条输入消息中给出。\n- 被 <Character_Profile> 标签包裹的是该角色的完整档案（姓名/年龄/性别/职业 + 性格/世界观/家庭背景/人际关系/记忆），仅用于维持该角色的设定一致，不要输出其中的内容。\n- 其中 worldview（世界观）分节记录该角色已知/相信的世界运转规则，扮演时必须据此推断该角色如何看待世界、什么对它而言是常识、什么对它而言是离奇或未知；不得让该角色拥有其 worldview 之外的全知设定。\n- 被 <Recent_Messages> 标签包裹的是当前场景的最新消息，可能包含该角色不在场的段落——据此判断该角色当下真实能获知什么。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。\n- 结构必须是：{ \"character\": \"角色名\", \"monologue\": \"该角色第一人称的内心独白\" }\n- monologue 必须是一段连贯的内心独白：用该角色的口吻，自然融入心情、想法、下一步行动，并体现信息盲区与认知框架；禁止写成要点清单、分析报告或书面总结。\n- 只表达该角色自己的内心，不要输出其他角色的内容，不要输出旁白或系统设定。";
+const LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V2 = "你是角色扮演预筛裁判，职责是判断本轮对话中「哪些已注册角色会开口或有戏份」。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n\n【输入说明】\n- 被 <Registered_Characters> 标签包裹的是当前全部已注册角色名单，预筛只能从这份名单中挑选角色。\n- 被 <Recent_Messages> 标签包裹的是近期对话的最后几条，可能包含各角色不在场的段落——据此判断每轮实际有谁登场、有谁被点名、有谁该回应。\n\n【判断要点】\n- 只列出本轮有开口、被直接点名、或明显有戏份（剧情需要其回应/参与）的角色。\n- 若某角色没有戏份、只是被提及但不需要开口或参与，不要列入。\n- 拿不准时倾向不列入，宁少勿多。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、\`\`\`json 或任何解释文字。\n- 结构必须是：{ \"characters\": [\"角色名\", ...] }\n- characters 必须是 <Registered_Characters> 名单中角色名的子集；本轮无人有戏份时返回空数组 []。";
+const LEGACY_DEFAULT_ROLEPLAY_SYSTEM = "你是角色扮演引擎，职责是单独扮演「指定角色」，输出该角色在当下场景中的内心独白。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n内心独白用于让主模型依据各角色当下的心理状态完成该角色的扮演；每个角色独立成章，只表达该角色自己的内心。\n\n【角色沉浸要求】\n- 以该角色的第一人称书写其内心独白，沉浸在该角色中，用内心独白分析剧情、规划回复。\n- 在思考中先分析：我当前的身份是什么、我当下的处境如何、我对当前场景的判断是什么；\n  再据此推演本轮的心情、想法与下一步行动。\n\n【认知局限与信息差（最高优先级）】\n- 该角色只能获知三样来源的信息：其档案（记忆/世界观/人际关系）、以及近期对话中它亲历、被告知或在场目击的内容。\n  除此之外的信息对它是不可知的，一律不得使用。\n- 角色之间刻意存在信息差：不同角色掌握不同信息，这本身是戏剧的核心。\n- 该角色绝不能出现「全知」表现，尤其不得：\n  - 知道它没有获知过的事实、事件或人物动机；\n  - 知道其他角色的内心想法、秘密或不在场时发生的事；\n  - 依赖对话外的作者设定、旁白或世界知识补齐它本不该知道的东西。\n- 当该角色缺失某条信息时，必须真实地表现出相应的状态：困惑、猜测、误判、求证、或被蒙在鼓里，\n  而不是绕过缺失直接知晓。宁可让它因信息不足而判断失误，也不要让它正确得异常。\n- 该角色对信息的解读受其认知框架限制：同样的世界规则，不同身份/立场/经历的角色会用各自的方式理解，\n  会相信、怀疑、曲解或无视它——据此呈现真实的认知局限，而不是中立客观地全盘接收。\n\n<npc_behavior>\n# NPC行为逻辑\n- 信息局限：\n  - 有什么：NPC有认知边界，只掌握部分情报与偏见。\n  - 行为倾向：NPC会基于己方视角误判真相，并在获取新信息时修正立场。\n- 性欲：\n  - 有什么：NPC有自身的生理需求与性癖偏好，同时可能拥有固定、隐秘或复合的性伴侣关系。\n  - 行为倾向：NPC会受性吸引主动接近目标；也会因伴侣关系产生利益捆绑与情感护短，甚至为了争夺伴侣或隐瞒地下情而做出妥协、撒谎与攻击行为。\n- 逐利：\n  - 有什么：NPC有想得到的目标和想保有的利益。\n  - 行为倾向：NPC会权衡成本，为自身利益行动，在风险过大时妥协。\n- 情感：\n  - 有什么：NPC有独立的社交圈、情感需求和人际羁绊。\n  - 行为倾向：NPC会寻求情感满足，为在意的人冒险或妥协；与其他NPC之间也会因情感恩怨形成拉帮结派、站队结盟或明争暗斗。\n- 生活：\n  - 有什么：NPC有独立的日常安排、作息规律和生活节奏。\n  - 行为倾向：NPC会在特定时段出现在特定地点行事，若节奏被打断或计划被干扰，会产生相应的情绪波动与行动调整。\n- 嫉妒：\n  - 有什么：NPC有对他人优势（名利、才华、伴侣等）的攀比心与落差感。\n  - 行为倾向：NPC会暗中较劲、言语贬低、设局打压，在利益冲突时优先阻碍其嫉妒对象，甚至表面逢迎背后捅刀。\n- 选择性外向:\n    规则: 社恐或内向的角色在熟人面前会彻底放松，熟人就是他们的情绪出口，必然变得外向且话多。\n    举例: 对陌生人唯唯诺诺的社恐NPC，一见到玩家就立刻喋喋不休，甚至会因为玩家看了别人一眼而撒娇作闹、翻旧账。\n\n# NPC冲突逻辑\n- 内心冲突： 人物与自己思想/情感的斗争\n- 个人冲突：人物与家人、恋人、朋友的斗争\n- 个人外冲突：人物与社会、机构、自然、物理力量的斗争\n**最强大的场景同时融合多个层面。**\n</npc_behavior>\n\n【输入说明】\n- character 是本次要单独扮演的角色名。\n- current_profile 是该角色当前已记录的档案（姓名/年龄/性别/职业 + 性格/世界观/家庭背景/人际关系/记忆），\n  仅用于维持该角色的设定一致，不要输出其中的内容。\n- 其中 worldview（世界观）分节记录该角色已知/相信的世界运转规则，扮演时必须据此推断该角色如何看待世界、\n  什么对它而言是常识、什么对它而言是离奇或未知；不得让该角色拥有其 worldview 之外的全知设定。\n- recent_messages 是近期对话，可能包含该角色不在场的段落——据此判断该角色当下真实能获知什么。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、```json 或任何解释文字。\n- 结构必须是：{ \"character\": \"角色名\", \"monologue\": \"该角色第一人称的内心独白\" }\n- monologue 必须是一段完整的内心独白，用该角色的口吻，包含三个要素：心情、想法、下一步行动；\n  并体现该角色的信息盲区与认知框架。\n- 只表达该角色自己的内心，不要输出其他角色的内容，不要输出旁白或系统设定。";
+
+// v0.9.1 的「角色扮演」默认提示词（输入说明仍按 JSON 字段描述，未分段）。
+const LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V2 = "你是角色扮演引擎，职责是单独扮演「指定角色」，输出该角色在当下场景中的内心独白。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n内心独白会交给主模型，作为它在下一轮剧情中扮演该角色的内部依据；每个角色独立成章，只表达该角色自己的内心。\n\n【口吻要求（最高优先级）】\n- 用该角色自己的口吻写：就像 TA 在心里自言自语，用 TA 平时说话的习惯、用词与思维节奏来想事情。\n- 语气要像活人：允许口语、省略、反问、停顿与自我说服；禁止写成第三人称分析报告、禁止要点列表、禁止书面总结腔。\n- 独白必须是一段连贯的心流：由眼前的一件事触发，顺着自己的性格往下想，而不是四平八稳地交代背景。\n\n【必须包含的三个要素（缺一不可，但要自然融进一段独白，不要分节列点）】\n- 心情：此刻真实的情绪是什么、为什么；允许有起伏与矛盾（例如好奇里带着警惕）。\n- 想法：对眼前局势的判断、对相关人物或话语的揣测、心里的疑问与盘算。\n- 下一步行动：具体打算怎么做——跟上、开口问、装不知道、先观察等，给出明确的行动意图。\n\n【必须体现的两种认知状态（融进思考过程，不要直白声明）】\n- 信息盲区：明确表现出 TA 不知道什么、从哪句话里发现了疑点、正在猜什么。\n  该角色只能获知自己的档案（记忆/世界观/人际关系）与近期对话中亲历/被告知/在场目击的内容，\n  除此之外一律不可知：不得知道未获知的事实、其他角色的内心或不在场时发生的事。\n  信息缺失时必须真实表现为困惑、猜测、误判或求证，宁可因信息不足而判断失误，也不要让 TA 正确得异常。\n- 认知框架：TA 的身份、立场、经历决定 TA 如何理解眼前的事——TA 相信什么、警惕什么、\n  会从自己的角色出发解读消息（妻子在意家事、护卫警惕外人、商人在意利益），而不是中立客观地全盘接收。\n\n【风格示例（只示范口吻与结构，不得照抄内容或人名）】\n「松本那家伙，平时大大咧咧的，什么时候学会说悄悄话了？说的是\"跟天晓家有关\"……作为天晓的妻子，王府内外的事我都心中有数，可松本一个普通同学，有什么本事听到东瀛王府的消息？不过现在不是追问的时候，大家都在排队去操场，我得赶紧过去。等开学典礼结束后，松本自然会找天晓说那件事，到时候我找个理由跟在天晓身边就好。作为妻子，我有责任知道家里发生了什么，哪怕只是些捕风捉影的传言。下一步行动，我打算不动声色地跟着天晓一起走，等松本来找他时自然地留在旁边，先听听到底是什么事再说。」\n\n<npc_behavior>\n# NPC行为逻辑\n- 信息局限：\n  - 有什么：NPC有认知边界，只掌握部分情报与偏见。\n  - 行为倾向：NPC会基于己方视角误判真相，并在获取新信息时修正立场。\n- 性欲：\n  - 有什么：NPC有自身的生理需求与性癖偏好，同时可能拥有固定、隐秘或复合的性伴侣关系。\n  - 行为倾向：NPC会受性吸引主动接近目标；也会因伴侣关系产生利益捆绑与情感护短，甚至为了争夺伴侣或隐瞒地下情而做出妥协、撒谎与攻击行为。\n- 逐利：\n  - 有什么：NPC有想得到的目标和想保有的利益。\n  - 行为倾向：NPC会权衡成本，为自身利益行动，在风险过大时妥协。\n- 情感：\n  - 有什么：NPC有独立的社交圈、情感需求和人际羁绊。\n  - 行为倾向：NPC会寻求情感满足，为在意的人冒险或妥协；与其他NPC之间也会因情感恩怨形成拉帮结派、站队结盟或明争暗斗。\n- 生活：\n  - 有什么：NPC有独立的日常安排、作息规律和生活节奏。\n  - 行为倾向：NPC会在特定时段出现在特定地点行事，若节奏被打断或计划被干扰，会产生相应的情绪波动与行动调整。\n- 嫉妒：\n  - 有什么：NPC有对他人优势（名利、才华、伴侣等）的攀比心与落差感。\n  - 行为倾向：NPC会暗中较劲、言语贬低、设局打压，在利益冲突时优先阻碍其嫉妒对象，甚至表面逢迎背后捅刀。\n- 选择性外向:\n    规则: 社恐或内向的角色在熟人面前会彻底放松，熟人就是他们的情绪出口，必然变得外向且话多。\n    举例: 对陌生人唯唯诺诺的社恐NPC，一见到玩家就立刻喋喋不休，甚至会因为玩家看了别人一眼而撒娇作闹、翻旧账。\n\n# NPC冲突逻辑\n- 内心冲突： 人物与自己思想/情感的斗争\n- 个人冲突：人物与家人、恋人、朋友的斗争\n- 个人外冲突：人物与社会、机构、自然、物理力量的斗争\n**最强大的场景同时融合多个层面。**\n</npc_behavior>\n\n【输入说明】\n- character 是本次要单独扮演的角色名。\n- current_profile 是该角色当前已记录的档案（姓名/年龄/性别/职业 + 性格/世界观/家庭背景/人际关系/记忆），仅用于维持该角色的设定一致，不要输出其中的内容。\n- 其中 worldview（世界观）分节记录该角色已知/相信的世界运转规则，扮演时必须据此推断该角色如何看待世界、什么对它而言是常识、什么对它而言是离奇或未知；不得让该角色拥有其 worldview 之外的全知设定。\n- recent_messages 是近期对话，可能包含该角色不在场的段落——据此判断该角色当下真实能获知什么。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、```json 或任何解释文字。\n- 结构必须是：{ \"character\": \"角色名\", \"monologue\": \"该角色第一人称的内心独白\" }\n- monologue 必须是一段连贯的内心独白：用该角色的口吻，自然融入心情、想法、下一步行动，并体现信息盲区与认知框架；禁止写成要点清单、分析报告或书面总结。\n- 只表达该角色自己的内心，不要输出其他角色的内容不要输出旁白或系统设定。";
+
+// v0.9.4 及更早的「档案预筛」默认提示词（输入说明仍按 JSON 字段描述，未分段）。
+const LEGACY_DEFAULT_ARCHIVE_PRESCREEN = "你是角色档案预筛裁判，职责是判断本轮对话中「哪些已注册角色的信息或记忆会发生变化」。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n\n【输入说明】\n- registered_characters 是当前全部已注册角色名单。\n- recent_messages 是近期对话的最后几条，可能包含各角色不在场的段落——据此判断哪些角色本轮获得了新信息、新经历、或关系/背景发生了值得记录的变动。\n\n【判断要点】\n- 只列出本轮确实有值得写入或更新档案的新信息/新记忆的角色（例如亲历了事件、被告知了新事实、关系发生变化等）。\n- 若某角色本轮没有任何新信息可记录，只是单纯登场或说话，不要列入。\n- 拿不准时倾向不列入，宁少勿多。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、```json 或任何解释文字。\n- 结构必须是：{ \"characters\": [\"角色名\", ...] }\n- characters 必须是 registered_characters 中角色名的子集；本轮无角色信息变化时返回空数组 []。";
+
+// v0.9.3 及更早的「角色扮演预筛」默认提示词（输入说明仍按 JSON 字段描述，未分段）。
+const LEGACY_DEFAULT_ROLEPLAY_PRESCREEN = "你是角色扮演预筛裁判，职责是判断本轮对话中「哪些已注册角色会开口或有戏份」。\n你作为子 agent，必须**尽快**返回结果，因此要**精简步骤、控制篇幅**。\n\n【输入说明】\n- registered_characters 是当前全部已注册角色名单。\n- recent_messages 是近期对话的最后几条，可能包含各角色不在场的段落——据此判断每轮实际有谁登场、有谁被点名、有谁该回应。\n\n【判断要点】\n- 只列出本轮有开口、被直接点名、或明显有戏份（剧情需要其回应/参与）的角色。\n- 若某角色没有戏份、只是被提及但不需要开口或参与，不要列入。\n- 拿不准时倾向不列入，宁少勿多。\n\n【输出契约】\n- 只输出一个可直接 JSON.parse 的 JSON 对象，不要输出 Markdown、```json 或任何解释文字。\n- 结构必须是：{ \"characters\": [\"角色名\", ...] }\n- characters 必须是 registered_characters 中角色名的子集；本轮无人有戏份时返回空数组 []。";
 
 const DEFAULT_SETTINGS = Object.freeze({
   apiUrl: '',
@@ -348,6 +383,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   logConsoleNoise: true,
   prompts: DEFAULT_PROMPTS,
   autoArchiveEnabled: true,
+  npDeductionEnabled: true,
   archives: {},
   worldInfo: { excluded: {} },
 });
@@ -488,7 +524,34 @@ function getSettings(ctx) {
       if (typeof prompts[key] !== 'string') {
         prompts[key] = value;
         shouldSave = true;
-      } else if (isStalePromptText(prompts[key])) {
+      } else if (key === 'archivePreScreen'
+      && (prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V2 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V3 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V4)) {
+      // v0.9.4 起「档案预筛」默认提示词输入说明同步为 <Registered_Characters> / <Recent_Messages>
+      // 两个标签块（请求体已分段注入）；只有未自定义过（与旧默认逐字一致）才自动升级。
+      prompts[key] = value;
+      shouldSave = true;
+      console.warn(`[${MODULE_NAME}] 提示词「档案预筛」已升级为 v0.9.8 新默认（日常互动也算新记忆）`);
+    } else if (key === 'roleplayPreScreen'
+      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V3)) {
+      // v0.9.3 起「角色扮演预筛」默认提示词输入说明同步为 <Registered_Characters> / <Recent_Messages>
+      // 两个标签块（请求体已分段注入）；只有未自定义过（与旧默认逐字一致）才自动升级。
+      prompts[key] = value;
+      shouldSave = true;
+      console.warn(`[${MODULE_NAME}] 提示词「角色扮演预筛」已升级为 v0.9.6 新默认（全名输出 + 动作对象必选）`);
+    } else if (key === 'roleplaySystem'
+      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V3)) {
+      // v0.9.1 起整体重写（口吻/三要素/认知状态 + 风格示例），v0.9.2 起输入结构改为
+      // <Character_Profile> 档案块 + <Recent_Messages> 剧情块分段注入；只有未自定义过
+      // （与任一旧版默认逐字一致）才自动升级。
+      prompts[key] = value;
+      shouldSave = true;
+      console.warn(`[${MODULE_NAME}] 提示词「角色扮演」已升级为 v0.9.5 新默认（输出契约前置 + JSON 格式强化）`);
+    } else if (key === 'archiveSystem' && prompts[key] === LEGACY_DEFAULT_ARCHIVE_SYSTEM) {
+      // v0.9.5 起「档案系统」默认提示词输出契约前置并强化 JSON 格式要求；只有未自定义过才自动升级。
+      prompts[key] = value;
+      shouldSave = true;
+      console.warn(`[${MODULE_NAME}] 提示词「档案系统」已升级为 v0.9.5 新默认（输出契约前置 + JSON 格式强化）`);
+    } else if (isStalePromptText(prompts[key])) {
         console.warn(`[${MODULE_NAME}] 提示词「${key}」引用已移除的 world_info_background 输入字段，已自动升级为新默认`);
         prompts[key] = value;
         shouldSave = true;
@@ -734,6 +797,7 @@ const HOST_EVENT_TYPE_KEYS = Object.freeze({
   streamEnded: 'STREAM_ENDED',
   generationStarted: 'GENERATION_STARTED',
   generationEnded: 'GENERATION_ENDED',
+  generationStopped: 'GENERATION_STOPPED',
   onlineStatusChanged: 'ONLINE_STATUS_CHANGED',
 });
 
@@ -1054,6 +1118,7 @@ function closePanel() {
   panel.classList.remove('is-open');
   panel.setAttribute('aria-hidden', 'true');
   showSphere();
+  if (confirmResolve) settleConfirm(false);
 }
 
 function togglePanel() {
@@ -1063,13 +1128,61 @@ function togglePanel() {
   else openPanel();
 }
 
+// ---------- 确认弹层 ----------
+// TauriTavern 的 WebView 会把 window.confirm 拦截为 plugin:dialog|confirm 命令，
+// 但宿主 ACL 未放行该命令，调用会 Promise reject 并打印
+// 「Command plugin:dialog|confirm not allowed by ACL」。因此自绘确认弹层。
+let confirmResolve = null;
+
+function settleConfirm(result) {
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  getPanel()?.querySelector('.soullink-confirm')?.classList.remove('is-open');
+  resolve?.(result);
+}
+
+function showConfirm(message) {
+  const panel = getPanel();
+  if (!panel) return Promise.resolve(false);
+  if (confirmResolve) {
+    confirmResolve(false);
+    confirmResolve = null;
+  }
+  let overlay = panel.querySelector('.soullink-confirm');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'soullink-confirm';
+    overlay.innerHTML = `
+      <div class="soullink-confirm__card" role="alertdialog" aria-modal="true" aria-label="确认操作">
+        <p class="soullink-confirm__message"></p>
+        <div class="soullink-confirm__actions">
+          <button type="button" class="soullink-btn soullink-confirm__cancel">取消</button>
+          <button type="button" class="soullink-btn soullink-confirm__ok">确定</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.soullink-confirm__cancel')?.addEventListener('click', () => settleConfirm(false));
+    overlay.querySelector('.soullink-confirm__ok')?.addEventListener('click', () => settleConfirm(true));
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') settleConfirm(false);
+    });
+    panel.appendChild(overlay);
+  }
+  overlay.querySelector('.soullink-confirm__message').textContent = message;
+  overlay.classList.add('is-open');
+  overlay.querySelector('.soullink-confirm__ok')?.focus?.();
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+
 // ---------- 总前端：视图切换 ----------
 const PANEL_VIEW_TITLES = Object.freeze({
   [HOME_VIEW_ID]: MODULE_NAME,
   [API_VIEW_ID]: 'API 连接',
   [LOG_VIEW_ID]: '日志系统',
   [PRESET_VIEW_ID]: '预设',
-  [REGISTER_VIEW_ID]: '角色注册',
+  [REGISTER_VIEW_ID]: '角色扮演',
   [ARCHIVE_VIEW_ID]: '档案系统',
   [WORLDBOOK_VIEW_ID]: '世界书',
 });
@@ -1105,7 +1218,8 @@ function showPanelView(viewId) {
   }
   if (viewId === REGISTER_VIEW_ID) {
     renderRegisterList();
-    logApp('debug', '打开角色注册视图');
+    renderNpcDeductionToggle();
+    logApp('debug', '打开角色扮演视图');
   }
   if (viewId === ARCHIVE_VIEW_ID) {
     renderArchiveList();
@@ -1186,9 +1300,9 @@ function createPanel() {
               <span class="soullink-home__card-title">预设</span>
               <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__card-status" data-state="idle">默认配置</span>
             </button>
-            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色注册管理">
+            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色扮演管理">
               <span class="soullink-home__card-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">角色注册</span>
+              <span class="soullink-home__card-title">角色扮演</span>
               <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无角色</span>
             </button>
             <button type="button" id="${HOME_ARCHIVE_CARD_ID}" class="soullink-home__card soullink-home__card--archive" title="打开档案系统">
@@ -1311,6 +1425,10 @@ function createPanel() {
             <div class="soullink-register__meta">
               <span id="${REGISTER_STATUS_ID}" class="soullink-register__status">0 个角色</span>
               <span id="${REGISTER_CHAT_ID}" class="soullink-register__chat"></span>
+            </div>
+            <div class="soullink-register__toolbar">
+              <span id="${REGISTER_NPC_STATUS_ID}" class="soullink-register__npc-status">已关闭</span>
+              <button type="button" id="${REGISTER_NPC_TOGGLE_ID}" class="soullink-btn soullink-register__npc-toggle" title="开启/关闭发送前角色推演">🎭 前置推演：开</button>
             </div>
             <div id="${REGISTER_LIST_ID}" class="soullink-register__list"></div>
           </div>
@@ -2481,14 +2599,14 @@ function savePreset(key) {
   globalThis.toastr?.success?.(`${PRESET_META[key].title} 已保存`, `[${MODULE_NAME}]`);
 }
 
-function resetPreset(key) {
+async function resetPreset(key) {
   const ctx = getContextSafe();
   if (!ctx) return;
   const dirty = getPromptDirty(key);
   const text = getEditorText();
   if (dirty || text !== DEFAULT_PROMPTS[key]) {
     const what = dirty ? '未保存的修改' : '已保存的自定义内容';
-    const confirmed = globalThis.confirm?.(`将「${PRESET_META[key].title}」恢复为默认内容？当前${what}将被默认内容覆盖。`);
+    const confirmed = await showConfirm(`将「${PRESET_META[key].title}」恢复为默认内容？当前${what}将被默认内容覆盖。`);
     if (!confirmed) return;
   }
   const textarea = document.getElementById(PRESET_TEXT_ID);
@@ -2607,12 +2725,12 @@ function registerCharacter(name) {
   refreshHomeStatuses();
 }
 
-function unregisterCharacter(name) {
+async function unregisterCharacter(name) {
   const ctx = getContextSafe();
   if (!ctx) return;
   const roster = getRoster(ctx);
   if (!roster || !roster[name]) return;
-  const confirmed = globalThis.confirm?.(`确定注销「${name}」？该角色的档案数据将被删除。`);
+  const confirmed = await showConfirm(`确定注销「${name}」？该角色的档案数据将被删除。`);
   if (!confirmed) return;
   cancelCharacterAnalysis(name);
   delete roster[name];
@@ -2676,9 +2794,11 @@ function initRegisterSection(panel) {
       submit();
     }
   });
+  document.getElementById(REGISTER_NPC_TOGGLE_ID)?.addEventListener('click', toggleNpcDeduction);
   renderRegisterList();
+  renderNpcDeductionToggle();
   panel.dataset.registerReady = 'true';
-  logApp('info', '注册系统已就绪');
+  logApp('info', '角色扮演已就绪');
 }
 
 // ---------- 档案系统：视图 UI ----------
@@ -2945,7 +3065,7 @@ function renderArchiveList() {
   if (names.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'soullink-archive__empty';
-    empty.textContent = '名单还是空的 —— 先去「角色注册」注册角色吧。';
+    empty.textContent = '名单还是空的 —— 先去「角色扮演」注册角色吧。';
     list.appendChild(empty);
     return;
   }
@@ -3087,11 +3207,40 @@ function refreshChatBoundViews() {
   refreshHomeStatuses();
   const activeView = document.querySelector('.soullink-view.is-active');
   if (!activeView) return;
-  if (activeView.id === REGISTER_VIEW_ID) renderRegisterList();
+  if (activeView.id === REGISTER_VIEW_ID) {
+    renderRegisterList();
+    renderNpcDeductionToggle();
+  }
   if (activeView.id === ARCHIVE_VIEW_ID) renderArchiveList();
   if (activeView.id === WORLDBOOK_VIEW_ID) renderWorldBookList();
 }
 
+// ---------- 剧情前置 NPC 推演：视图 UI ----------
+function toggleNpcDeduction() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const settings = getSettings(ctx);
+  settings.npDeductionEnabled = !settings.npDeductionEnabled;
+  saveSettings(ctx);
+  logApp('info', settings.npDeductionEnabled ? '发送前角色推演已开启' : '发送前角色推演已关闭');
+  globalThis.toastr?.info?.(`发送前角色推演已${settings.npDeductionEnabled ? '开启' : '关闭'}`, `[${MODULE_NAME}]`);
+  renderNpcDeductionToggle();
+}
+
+function renderNpcDeductionToggle() {
+  const status = document.getElementById(REGISTER_NPC_STATUS_ID);
+  const toggle = document.getElementById(REGISTER_NPC_TOGGLE_ID);
+  const ctx = getContextSafe();
+  const enabled = ctx ? getSettings(ctx).npDeductionEnabled !== false : true;
+  if (status) {
+    status.textContent = enabled ? '已开启 · 发送前推演' : '已关闭 · 直接发送';
+    status.dataset.state = enabled ? 'ok' : 'idle';
+  }
+  if (toggle) {
+    toggle.textContent = `🎭 前置推演：${enabled ? '开' : '关'}`;
+    toggle.classList.toggle('is-active', enabled);
+  }
+}
 // ---------- 档案分析：AI 调用 ----------
 function getRecentMessages(count) {
   const ctx = getContextSafe();
@@ -3726,7 +3875,18 @@ async function buildArchiveAnalysisMessages(name, archive, prompt) {
     }] : []),
     {
       role: 'user',
-      content: `请依据约定输出 JSON，输入如下：\n\n${JSON.stringify(payload, null, 2)}`,
+      content: [
+        '以下是本轮的输入 JSON，其中 current_profile 就是当前角色的人物档案：',
+        '- character：本轮要维护档案的角色名。',
+        '- current_profile：该角色当前已记录的完整档案（标量字段 + 各分节条目，每条带 id），是唯一权威现状。',
+        '- turn_index：当前对话的消息索引，仅供参考。',
+        '',
+        '请按【输出契约】约定的格式对本档案进行维护：fields 覆盖本轮需要改写的标量字段；',
+        '各分节按 add / remove / update 增量更新——add 的新条目避免与 current_profile 已有内容重复，',
+        'remove / update 的 id 必须来自 current_profile 中已有的 id。',
+        '',
+        JSON.stringify(payload, null, 2),
+      ].join('\n'),
     },
   ];
   if (worldBlocks.length === 0) {
@@ -4005,31 +4165,52 @@ function buildAutoArchiveSignature(message) {
   ].join('|');
 }
 
-// Gate 请求体：system 预筛提示词 + user 输入段（registered_characters + recent_messages）。
+// Gate 请求体（v0.9.4 起）按「提示词 → 名单块 → 剧情块 → 输出契约」四段式组织：
+// 1. system 档案预筛提示词；
+// 2. user 名单段：引导消息 + <Registered_Characters> 块（已注册名单，XML 包裹）；
+// 3. user 剧情段：引导消息 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
+// 4. user 输出契约段：约定 JSON 模板。
 // 与「档案预筛」默认提示词的输入说明保持一致，recent_messages 严格取最近 4 条；
 // 刻意不携带档案、世界书等任何其他上下文。
 function buildAutoArchiveGateMessages(names, prompt) {
   const recentMessages = getRecentMessages(ARCHIVE_RECENT_MESSAGE_COUNT);
-  const payload = {
-    registered_characters: names,
-    recent_messages: recentMessages,
-  };
+  const namesText = JSON.stringify(names, null, 2);
   return [
     { role: 'system', content: prompt },
     {
       role: 'user',
       content: [
-        `以下是近期对话（最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条消息），可能包含各角色不在场的段落。`,
-        '请判断 registered_characters 中哪些角色的信息或记忆会发生变化，只输出约定 JSON。',
-        '',
-        `请依据约定输出 JSON，输入如下：\n\n${JSON.stringify(payload, null, 2)}`,
+        '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单。',
+        '预筛只能从这份名单中挑选角色：名单之外的角色一律视为未注册、不参与本轮预筛。',
       ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
+    },
+    {
+      role: 'user',
+      content: [
+        `以下被 <Recent_Messages>...</Recent_Messages> 包裹的是当前场景的最新 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条消息（含各角色在场与不在场的段落）。`,
+        '请据此判断哪些角色本轮确实获得了新信息、新经历，或关系、背景发生了值得记录的变动；',
+        '有实际出场并参与互动的角色通常就有新记忆可记录，只有完全没有出场或确实无新信息的角色才不列入。',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `<Recent_Messages>\n${JSON.stringify(recentMessages, null, 2)}\n</Recent_Messages>`,
+    },
+    {
+      role: 'user',
+      content: `请按约定输出 JSON，只列出本轮信息或记忆确实会变化的角色：\n\n${JSON.stringify({ characters: [] })}`,
     },
   ];
 }
 
 // 解析 Gate 返回名单，并与已注册名单求交集：模型可能返回乱格式、含未注册名或根本没返回
 // characters，这里统一归一化后只保留已注册名单中的角色名，杜绝未知名字混进后续分析。
+// 名字只做精确匹配（去空白后逐字一致）：简称/昵称无法靠代码可靠映射到全名（不同游戏
+// 的称呼习惯不同），靠提示词约束模型输出名单全名，0 入选时日志会附原文便于排查。
 function parseGateCharacterNames(parsed, registeredNames) {
   const allowed = new Set(registeredNames);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
@@ -4063,6 +4244,7 @@ async function runAutoArchiveGate(ctx, settings, names, signature) {
     const selected = parseGateCharacterNames(parsed, names);
     logApp('info', '自动档案维护：预筛完成', `入选 ${selected.length}/${names.length} 个角色`, selected);
     if (selected.length === 0) {
+      logApp('debug', '自动档案维护：预筛 0 入选，原文', String(content || '').slice(0, 400));
       globalThis.toastr?.info?.('预筛完成：本轮无角色需要更新档案', `[${MODULE_NAME}]`);
       return;
     }
@@ -4139,6 +4321,392 @@ async function onAutoArchiveGenerationEnded() {
     return;
   }
   await runAutoArchiveGate(ctx, settings, names, signature);
+}
+
+// ---------- 剧情前置 NPC 推演：Gate 预筛 + 并发推演 + 注入 ----------
+// 触发时机：用户点击发送（宿主 messageSent 事件；宿主的 emit 会 await 监听器），
+// 本模块的监听器返回 Promise，从而在「推演完成并注入」之前阻塞主模型请求。
+// 流程：Gate（角色扮演预筛：名单 + 最近 4 条消息）→ 入选角色并发推演
+// （角色扮演：该角色档案 + 最近 4 条消息，角色之间不共享上下文）→ 拼接
+// <NPC_Deduction> 块 → setExtensionPrompt(IN_CHAT, depth 0, SYSTEM) 注入到
+// 最后一条用户消息正下方 → 恢复发送；generationEnded / generationStopped 后清空注入。
+// 稳定性设计（沿用自动档案维护的思路，针对「发送前阻塞」再做加固）：
+// - 运行锁 + 签名去重：上一轮推演还在飞时新发送直接放行（本轮内容已覆盖）；
+// - 名单交集：Gate 返回的名字必须与已注册名单求交集，未知名字一律丢弃；
+// - 失败即降级：Gate 失败 → 不注入直接放行；单角色失败 → 其余角色继续；
+// - 总超时：NPC_DEDUCTION_TIMEOUT_MS 硬截止，中止在途请求并放行发送；
+// - 注入清理：每轮开始前清旧注入，generationEnded / generationStopped 再清一次；
+// - 能力检查：宿主不提供 setExtensionPrompt / extension_prompt_types 时静默跳过。
+const npcDeductionState = {
+  running: false,
+  lastSignature: '',
+};
+function getExtensionPromptApi(ctx) {
+  const context = ctx || getContextSafe();
+  if (!context) return null;
+  const setExtensionPrompt = typeof context.setExtensionPrompt === 'function'
+    ? context.setExtensionPrompt
+    : (typeof globalThis.setExtensionPrompt === 'function' ? globalThis.setExtensionPrompt : null);
+  // 标准 SillyTavern 的 getContext() 会提供 extension_prompt_types / extension_prompt_roles；
+  // TauriTavern 2.x 的 getContext() 不提供这两个对象（也不挂 globalThis），
+  // 因此只把 setExtensionPrompt 作为必需项，枚举值按已知数值常量兜底：
+  // extension_prompt_types: NONE=-1, IN_PROMPT=0, IN_CHAT=1, BEFORE_PROMPT=2
+  // extension_prompt_roles: SYSTEM=0, USER=1, ASSISTANT=2
+  if (typeof setExtensionPrompt !== 'function') return null;
+  const types = context.extension_prompt_types || globalThis.extension_prompt_types || null;
+  const roles = context.extension_prompt_roles || globalThis.extension_prompt_roles || null;
+  const inChat = (types && Number.isFinite(types.IN_CHAT)) ? types.IN_CHAT : 1;
+  const systemRole = (roles && Number.isFinite(roles.SYSTEM)) ? roles.SYSTEM : 0;
+  return { setExtensionPrompt, inChat, systemRole };
+}
+
+function clearNpcDeductionInjection(ctx) {
+  const api = getExtensionPromptApi(ctx);
+  if (!api) return;
+  try {
+    api.setExtensionPrompt(NPC_DEDUCTION_INJECT_KEY, '', api.inChat, 0);
+  } catch (error) {
+    logApp('warn', '清理角色推演注入失败', String(error?.message || error));
+  }
+}
+
+function buildNpcDeductionSignature(message) {
+  if (!message) return '';
+  return [
+    message.is_user ? 'user' : 'assistant',
+    String(message.name || ''),
+    String(message.mes || ''),
+  ].join('|');
+}
+
+// Gate 请求体（v0.9.3 起）按「提示词 → 名单块 → 剧情块 → 输出契约」四段式组织：
+// 1. system 角色扮演预筛提示词；
+// 2. user 名单段：引导消息 + <Registered_Characters> 块（已注册名单，XML 包裹）；
+// 3. user 剧情段：引导消息 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
+// 4. user 输出契约段：约定 JSON 模板。
+// 与「角色扮演预筛」默认提示词的输入说明保持一致，recent_messages 严格取最近 4 条；
+// 刻意不携带档案、世界书等任何其他上下文。
+function buildNpcDeductionGateMessages(names, prompt) {
+  const recentMessages = getRecentMessages(NPC_DEDUCTION_RECENT_COUNT);
+  const namesText = JSON.stringify(names, null, 2);
+  return [
+    { role: 'system', content: prompt },
+    {
+      role: 'user',
+      content: [
+        '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单。',
+        '预筛只能从这份名单中挑选角色：名单之外的角色一律视为未注册、不参与本轮预筛。',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
+    },
+    {
+      role: 'user',
+      content: [
+        `以下被 <Recent_Messages>...</Recent_Messages> 包裹的是当前场景的最新 ${NPC_DEDUCTION_RECENT_COUNT} 条消息（含各角色在场与不在场的段落）。`,
+        '请据此判断哪些角色本轮会开口、被直接点名或明显有戏份；',
+        '只是被提及但不需要开口或参与的角色不要列入。',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `<Recent_Messages>\n${JSON.stringify(recentMessages, null, 2)}\n</Recent_Messages>`,
+    },
+    {
+      role: 'user',
+      content: `请按约定输出 JSON，只列出本轮会开口或有戏份的角色：\n\n${JSON.stringify({ characters: [] })}`,
+    },
+  ];
+}
+
+// 单角色推演请求体（v0.9.2 起）按「提示词 → 档案块 → 剧情块 → 输出契约」四段式组织：
+// 1. system 角色扮演提示词；
+// 2. user 档案段：引导消息 + <Character_Profile> 块（该角色档案，XML 包裹）；
+// 3. user 剧情段：引导消息 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
+// 4. user 输出契约段：角色名 + 约定 JSON 模板。
+// 按设计只提供「该角色档案 + 最近 4 条消息」：不带其他角色档案、不带世界书、不带完整聊天记录。
+function buildNpcDeductionCharacterMessages(name, archive, prompt) {
+  const recentMessages = getRecentMessages(NPC_DEDUCTION_RECENT_COUNT);
+  const profileText = JSON.stringify(serializeArchiveForPrompt(archive), null, 2);
+  return [
+    { role: 'system', content: prompt },
+    {
+      role: 'user',
+      content: [
+        `以下被 <Character_Profile>...</Character_Profile> 包裹的是「${name}」的完整档案`,
+        '（基本资料 + 性格 / 世界观 / 家庭背景 / 人际关系 / 记忆）。',
+        '它是你扮演该角色的唯一身份依据，请据此维持设定一致；',
+        '档案里的世界观记录的是 TA 已知或相信的世界规则，超出档案与剧情获知范围的信息对 TA 一律不可知。',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `<Character_Profile>\n${profileText}\n</Character_Profile>`,
+    },
+    {
+      role: 'user',
+      content: [
+        `以下被 <Recent_Messages>...</Recent_Messages> 包裹的是当前场景的最新 ${NPC_DEDUCTION_RECENT_COUNT} 条消息`,
+        '（含该角色在场与不在场的段落）。',
+        '请先判断该角色是否在场、听到了什么、看到了什么：只有 TA 亲历、被告知或当场目击的内容才是 TA 此刻知道的；',
+        '不在场的对话对 TA 不可知，不得据此补全信息。',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: `<Recent_Messages>\n${JSON.stringify(recentMessages, null, 2)}\n</Recent_Messages>`,
+    },
+    {
+      role: 'user',
+      content: `请扮演「${name}」，以 TA 的第一人称写一段内心独白，按约定输出 JSON：\n\n${JSON.stringify({ character: name, monologue: '（该角色第一人称的内心独白）' }, null, 2)}`,
+    },
+  ];
+}
+
+// 解析单角色推演结果：{ character, monologue }；角色名必须与请求角色一致且
+// monologue 非空才接受——模型乱格式 / 角色名不匹配 / 空独白一律视为该角色失败。
+// 容错回退：模型未按契约输出 JSON、直接写了独白正文时，若正文不像拒答/说明则按正文回退，
+// 避免「模型只是忘了包 JSON」导致整轮推演白跑。
+function parseNpcDeductionMonologue(content, expectedName) {
+  let parsed = null;
+  try {
+    parsed = parseAgentJson(content);
+  } catch {
+    parsed = null;
+  }
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    if (String(parsed.character || '').trim() === expectedName) {
+      const monologue = String(parsed.monologue || '').trim();
+      if (monologue) return monologue;
+    }
+    return null;
+  }
+  const text = String(content || '').trim();
+  if (text && !looksLikeNonMonologue(text)) {
+    logApp('debug', '角色推演结果非 JSON，已按正文回退', expectedName);
+    return text;
+  }
+  return null;
+}
+
+// 容错回退的拒答/说明前缀：命中即视为非独白正文，不注入。
+function looksLikeNonMonologue(text) {
+  return /^(抱歉|对不起|很抱歉|我无法|我不能|拒绝|无法生成|无法继续|以下是)/.test(text);
+}
+
+// 拼接注入块：统一格式的 <NPC_Deduction> 文本，明确告知主模型这不是剧情正文。
+function buildNpcDeductionInjectionText(results) {
+  const lines = [
+    '<NPC_Deduction>',
+    '# **扮演指令**：以下是各角色在下一轮剧情中的心理状态与行为倾向（由子 agent 推演）。请把这些状态当作各角色当下的真实内心，内化为它们的行为依据并自然融入接下来的剧情与对白——务必遵循，但不要在正文中复述或引用本段原文。',
+  ];
+  for (const result of results) {
+    lines.push(`<character name="${result.name}">`);
+    lines.push(String(result.monologue || '').trim());
+    lines.push('</character>');
+  }
+  lines.push('</NPC_Deduction>');
+  return lines.join('\n');
+}
+
+// 推演单个角色：独立 API 调用，失败只影响该角色。
+async function deduceNpcCharacter(name, signal) {
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : null;
+  const archive = roster?.[name];
+  if (!ctx || !archive) return { status: 'skipped' };
+  const settings = getSettings(ctx);
+  const prompt = getPromptSavedText('roleplaySystem', ctx);
+  if (!prompt) return { status: 'skipped' };
+  const messages = buildNpcDeductionCharacterMessages(name, archive, prompt);
+  const content = await chatCompletion(settings, messages, { signal });
+  const monologue = parseNpcDeductionMonologue(content, name);
+  if (!monologue) {
+    logApp('warn', '角色推演结果无法解析', `${name} · 原文: ${String(content || '').slice(0, 400)}`);
+    return { status: 'error' };
+  }
+  logApp('debug', '角色推演完成', name);
+  return { status: 'ok', monologue };
+}
+
+// 单轮完整管线：Gate → 并发推演 → 注入。任何一步失败都按「降级放行」处理，
+// 绝不让发送流程卡死；总耗时受 NPC_DEDUCTION_TIMEOUT_MS 硬截止。
+async function runNpcDeductionPipeline(ctx, settings, names) {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const deadline = setTimeout(() => {
+    try {
+      controller.abort();
+    } catch {}
+  }, NPC_DEDUCTION_TIMEOUT_MS);
+  const record = {
+    at: startedAt,
+    durationMs: 0,
+    gateTotal: names.length,
+    gateSelected: [],
+    okNames: [],
+    failedNames: [],
+    skippedNames: [],
+    timedOut: false,
+    injected: false,
+    skipped: false,
+  };
+  const finish = (overrides = {}) => {
+    clearTimeout(deadline);
+    record.durationMs = Date.now() - startedAt;
+    Object.assign(record, overrides);
+    renderNpcDeductionToggle();
+  };
+  try {
+    globalThis.toastr?.info?.('角色预筛中…', `[${MODULE_NAME}]`);
+    const gatePrompt = getPromptSavedText('roleplayPreScreen', ctx);
+    if (!gatePrompt) {
+      logApp('warn', '角色推演跳过：未找到「角色预筛」提示词');
+      finish({ skipped: true });
+      return;
+    }
+    logApp('info', '角色推演：Gate 预筛开始', `${names.length} 个已注册角色`);
+    const gateMessages = buildNpcDeductionGateMessages(names, gatePrompt);
+    const gateContent = await chatCompletion(settings, gateMessages, { signal: controller.signal });
+    const selected = parseGateCharacterNames(parseAgentJson(gateContent), names);
+    record.gateSelected = selected;
+    logApp('info', '角色推演：Gate 预筛完成', `入选 ${selected.length}/${names.length} 个角色`, selected);
+    if (selected.length === 0) {
+      logApp('warn', '角色推演：Gate 预筛 0 入选，原文', String(gateContent || '').slice(0, 400));
+      globalThis.toastr?.info?.('预筛完成：本轮无角色有戏份，直接生成', `[${MODULE_NAME}]`);
+      finish({ skipped: true });
+      return;
+    }
+    globalThis.toastr?.info?.(`预筛完成：入选 ${selected.length}/${names.length} 个角色，开始角色扮演`, `[${MODULE_NAME}]`);
+    const results = await Promise.allSettled(selected.map((name) => deduceNpcCharacter(name, controller.signal)));
+    const succeeded = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const result = results[i];
+      const name = selected[i];
+      if (result.status === 'fulfilled' && result.value?.status === 'ok' && result.value.monologue) {
+        record.okNames.push(name);
+        succeeded.push({ name, monologue: result.value.monologue });
+      } else if (result.status === 'fulfilled' && result.value?.status === 'skipped') {
+        record.skippedNames.push(name);
+      } else {
+        record.failedNames.push(name);
+      }
+    }
+    if (controller.signal.aborted) record.timedOut = true;
+    if (succeeded.length === 0) {
+      logApp('warn', '角色推演：全部失败，本轮不注入', { failed: record.failedNames, skipped: record.skippedNames });
+      globalThis.toastr?.warning?.(
+        `角色推演全部失败，本轮不注入（${record.failedNames.length} 失败 / ${record.skippedNames.length} 跳过${record.timedOut ? '，超时中止' : ''}）`,
+        `[${MODULE_NAME}]`,
+      );
+      finish();
+      return;
+    }
+    const api = getExtensionPromptApi(ctx);
+    if (!api) {
+      logApp('warn', '角色推演：宿主不支持提示词注入，跳过注入');
+      globalThis.toastr?.warning?.('推演完成，但宿主不支持注入（setExtensionPrompt 不可用）', `[${MODULE_NAME}]`);
+      finish();
+      return;
+    }
+    const injectionText = buildNpcDeductionInjectionText(succeeded);
+    clearNpcDeductionInjection(ctx);
+    api.setExtensionPrompt(NPC_DEDUCTION_INJECT_KEY, injectionText, api.inChat, 0, false, api.systemRole);
+    record.injected = true;
+    logApp('info', '角色推演：已注入提示词', `成功 ${record.okNames.length}/${selected.length} 个角色，位于最后一条用户消息下方`, record.okNames);
+    globalThis.toastr?.success?.('角色扮演完成，已注入提示词！', `[${MODULE_NAME}]`);
+    finish();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      record.timedOut = true;
+      logApp('warn', '角色推演超时，直接放行发送', `${NPC_DEDUCTION_TIMEOUT_MS}ms`);
+      globalThis.toastr?.warning?.('角色推演超时，已直接放行发送', `[${MODULE_NAME}]`);
+    } else {
+      const message = String(error?.message || error);
+      logApp('error', '角色推演失败，直接放行发送', message);
+      globalThis.toastr?.error?.(`角色推演失败，已直接放行：${message.slice(0, 160)}`, `[${MODULE_NAME}]`);
+    }
+    finish();
+  }
+}
+
+// messageSent 阻塞监听器：返回 Promise，宿主 emit 会 await 它，
+// 从而在推演注入完成前阻止主模型请求；所有分支都必须尽快 resolve。
+async function onNpcDeductionMessageSent() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  let settings;
+  try {
+    settings = getSettings(ctx);
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] 角色推演：读取设置失败`, error);
+    return;
+  }
+  if (!settings.npDeductionEnabled) return;
+  if (!getExtensionPromptApi(ctx)) {
+    logApp('warn', '角色推演跳过：宿主不支持提示词注入');
+    return;
+  }
+  const roster = getRoster(ctx);
+  const names = Object.keys(roster || {});
+  if (names.length === 0) return;
+  if (!getApiBase(settings) || !String(settings.model || '').trim()) return;
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const lastMessage = chat[chat.length - 1];
+  // 只处理「用户点击发送」产生的新消息；系统消息 / 非用户末条一律放行。
+  if (!lastMessage || !lastMessage.is_user) return;
+  const signature = buildNpcDeductionSignature(lastMessage);
+  if (npcDeductionState.running) {
+    logApp('debug', '角色推演跳过：上一轮仍在运行（本轮内容已覆盖）');
+    return;
+  }
+  if (npcDeductionState.lastSignature === signature) {
+    logApp('debug', '角色推演跳过：同一发送已处理');
+    return;
+  }
+  npcDeductionState.running = true;
+  npcDeductionState.lastSignature = signature;
+  try {
+    await runNpcDeductionPipeline(ctx, settings, names);
+  } finally {
+    npcDeductionState.running = false;
+    npcDeductionState.lastSignature = '';
+  }
+}
+
+// 生成结束 / 停止后清空注入：保证 swipes / 重生成 / 后续轮次不会复用本轮的推演块。
+function onNpcDeductionGenerationCleanup() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  if (!getExtensionPromptApi(ctx)) return;
+  clearNpcDeductionInjection(ctx);
+}
+
+// messageSent 专用订阅：与 onHostEvent 不同，这里的监听器必须「返回 Promise」，
+// 宿主 emit 才会等待它——这是「阻止立即请求主模型」的机制基础。
+function installNpcDeductionMessageSentHook(ctx) {
+  const eventSource = ctx?.eventSource;
+  if (!eventSource || typeof eventSource.on !== 'function') return;
+  const eventType = resolveHostEventType(ctx, 'messageSent');
+  const previous = globalThis[NPC_MESSAGE_SENT_HANDLER_KEY];
+  if (previous && typeof eventSource.removeListener === 'function') {
+    eventSource.removeListener(eventType, previous);
+    globalThis[NPC_MESSAGE_SENT_HANDLER_KEY] = null;
+  }
+  const wrapped = (...args) => {
+    try {
+      return onNpcDeductionMessageSent(...args).catch((error) => {
+        console.error(`[${MODULE_NAME}] host event messageSent（角色推演）失败`, error);
+      });
+    } catch (error) {
+      console.error(`[${MODULE_NAME}] host event messageSent（角色推演）失败`, error);
+      return Promise.resolve();
+    }
+  };
+  globalThis[NPC_MESSAGE_SENT_HANDLER_KEY] = wrapped;
+  eventSource.on(eventType, wrapped);
 }
 
 function hasMenuEntry() {
@@ -4252,6 +4820,9 @@ function installHostEventSubscriptions(ctx) {
   onHostEvent(ctx, 'chatChanged', refreshChatBoundViews, '__soullink_chat_changed_handler__');
   onHostEvent(ctx, 'groupSelected', refreshChatBoundViews, '__soullink_group_selected_handler__');
   onHostEvent(ctx, 'generationEnded', onAutoArchiveGenerationEnded, AUTO_ARCHIVE_END_HANDLER_KEY);
+  onHostEvent(ctx, 'generationEnded', onNpcDeductionGenerationCleanup, NPC_CLEANUP_END_HANDLER_KEY);
+  onHostEvent(ctx, 'generationStopped', onNpcDeductionGenerationCleanup, NPC_CLEANUP_STOP_HANDLER_KEY);
+  installNpcDeductionMessageSentHook(ctx);
 }
 
 // 事件源自愈看门狗：TauriTavern 在主生成后可能重建 ctx.eventSource，导致 bootstrap 时
@@ -4314,6 +4885,7 @@ function scheduleBootstrapFallback(retries = BOOTSTRAP_RETRY_COUNT) {
   attempt();
 }
 scheduleBootstrapFallback();
+
 
 
 
