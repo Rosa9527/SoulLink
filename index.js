@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.8.9';
+const MODULE_VERSION = '0.8.11';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -173,6 +173,8 @@ const LOG_CAPTURE_KEY = '__soullink_log_capture__';
 const LOG_EVENT_LOG_KEY = '__soullink_log_event_handler__';
 const NETWORK_CAPTURE_KEY = '__soullink_network_capture__';
 const AUTO_ARCHIVE_END_HANDLER_KEY = '__soullink_auto_archive_end_handler__';
+const HOST_EVENT_WATCHDOG_KEY = '__soullink_host_event_watchdog__';
+const HOST_EVENT_WATCHDOG_INTERVAL_MS = 4000;
 
 const DEFAULT_PROMPTS = Object.freeze({
   archiveSystem: `你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。
@@ -716,11 +718,39 @@ function getContextSafe() {
   }
 }
 
+// 宿主事件名 → ctx.event_types 键 的映射。
+// TauriTavern 的 eventSource 需要 event_types 的值（如 ctx.event_types.GENERATION_ENDED），
+// 裸字符串名（如 'generationEnded'）不会触发；标准 SillyTavern 的 event_types 值则是
+// snake_case（如 'generation_ended'）。统一经 ctx.event_types 解析，取不到时回退原字符串。
+const HOST_EVENT_TYPE_KEYS = Object.freeze({
+  appReady: 'APP_READY',
+  extensionsLoaded: 'EXTENSIONS_LOADED',
+  settingsLoaded: 'SETTINGS_LOADED',
+  chatChanged: 'CHAT_CHANGED',
+  groupSelected: 'GROUP_SELECTED',
+  messageSent: 'MESSAGE_SENT',
+  messageReceived: 'MESSAGE_RECEIVED',
+  streamStarted: 'STREAM_STARTED',
+  streamEnded: 'STREAM_ENDED',
+  generationStarted: 'GENERATION_STARTED',
+  generationEnded: 'GENERATION_ENDED',
+  onlineStatusChanged: 'ONLINE_STATUS_CHANGED',
+});
+
+function resolveHostEventType(ctx, eventName) {
+  const typeKey = HOST_EVENT_TYPE_KEYS[eventName];
+  if (typeKey && ctx?.event_types && ctx.event_types[typeKey] !== undefined && ctx.event_types[typeKey] !== null) {
+    return ctx.event_types[typeKey];
+  }
+  return eventName;
+}
+
 function onHostEvent(ctx, eventName, handler, key) {
   const eventSource = ctx?.eventSource;
   if (!eventSource || typeof eventSource.on !== 'function' || typeof handler !== 'function') return;
+  const eventType = resolveHostEventType(ctx, eventName);
   if (globalThis[key] && typeof eventSource.removeListener === 'function') {
-    eventSource.removeListener(eventName, globalThis[key]);
+    eventSource.removeListener(eventType, globalThis[key]);
     globalThis[key] = null;
   }
   const wrapped = (...args) => {
@@ -734,7 +764,7 @@ function onHostEvent(ctx, eventName, handler, key) {
     }
   };
   globalThis[key] = wrapped;
-  eventSource.on(eventName, wrapped);
+  eventSource.on(eventType, wrapped);
 }
 
 function getSphere() {
@@ -1673,13 +1703,14 @@ function initHostEventLogging() {
   if (!eventSource || typeof eventSource.on !== 'function') return;
   const wrappers = globalThis[LOG_EVENT_LOG_KEY] || (globalThis[LOG_EVENT_LOG_KEY] = {});
   for (const eventName of HOST_EVENTS_TO_LOG) {
+    const eventType = resolveHostEventType(ctx, eventName);
     const previous = wrappers[eventName];
     if (previous && typeof eventSource.removeListener === 'function') {
-      eventSource.removeListener(eventName, previous);
+      eventSource.removeListener(eventType, previous);
     }
     const wrapped = (...args) => pushLogEntry('debug', 'event', [`[${eventName}]`, ...args]);
     wrappers[eventName] = wrapped;
-    eventSource.on(eventName, wrapped);
+    eventSource.on(eventType, wrapped);
   }
 }
 
@@ -2294,6 +2325,11 @@ function initLogView(panel) {
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (logEntries.length === 0) {
+      globalThis.toastr?.warning?.('暂无日志可导出', `[${MODULE_NAME}]`);
+    } else {
+      globalThis.toastr?.success?.(`已导出 ${logEntries.length} 条日志（JSON 文件）`, `[${MODULE_NAME}]`);
+    }
   });
 
   document.getElementById(LOG_FULL_BODY_EXPORT_ID)?.addEventListener('click', () => {
@@ -2313,6 +2349,11 @@ function initLogView(panel) {
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (fullBodyCaptures.length === 0) {
+      globalThis.toastr?.warning?.('暂无完整请求体（触发一次对话请求后自动捕获）', `[${MODULE_NAME}]`);
+    } else {
+      globalThis.toastr?.success?.(`已导出最近 ${fullBodyCaptures.length} 次完整请求体（JSON 文件）`, `[${MODULE_NAME}]`);
+    }
   });
 
   const list = document.getElementById(LOG_LIST_ID);
@@ -4025,6 +4066,7 @@ async function runAutoArchiveGate(ctx, settings, names, signature) {
     }
     const messages = buildAutoArchiveGateMessages(names, prompt);
     logApp('info', '自动档案维护：预筛开始', `${names.length} 个已注册角色`);
+    globalThis.toastr?.info?.('档案预筛中…', `[${MODULE_NAME}]`);
     const content = await chatCompletion(settings, messages);
     const parsed = parseAgentJson(content);
     const selected = parseGateCharacterNames(parsed, names);
@@ -4213,6 +4255,37 @@ async function registerMenuItem() {
   logApp('info', '扩展菜单已注入 #extensionsMenu');
 }
 
+// 宿主事件订阅统一入口：chatChanged / groupSelected / generationEnded。
+// 事件源看门狗发现 ctx.eventSource 被宿主重建时，会重新调用本函数重挂订阅。
+function installHostEventSubscriptions(ctx) {
+  onHostEvent(ctx, 'chatChanged', refreshChatBoundViews, '__soullink_chat_changed_handler__');
+  onHostEvent(ctx, 'groupSelected', refreshChatBoundViews, '__soullink_group_selected_handler__');
+  onHostEvent(ctx, 'generationEnded', onAutoArchiveGenerationEnded, AUTO_ARCHIVE_END_HANDLER_KEY);
+}
+
+// 事件源自愈看门狗：TauriTavern 在主生成后可能重建 ctx.eventSource，导致 bootstrap 时
+// 绑定到旧事件源的订阅成为孤儿——现象是「跑一次成功、之后全静默跳过，F5 重跑才复活」。
+// 周期对比当前绑定事件源与宿主现时事件源的身份，一旦被换就重挂订阅（NPC Tracker 同款思路）。
+function startHostEventWatchdog() {
+  if (globalThis[HOST_EVENT_WATCHDOG_KEY]) {
+    globalThis.clearInterval?.(globalThis[HOST_EVENT_WATCHDOG_KEY]);
+  }
+  let boundEventSource = getContextSafe()?.eventSource || null;
+  globalThis[HOST_EVENT_WATCHDOG_KEY] = globalThis.setInterval(() => {
+    try {
+      const freshCtx = getContextSafe();
+      const freshEventSource = freshCtx?.eventSource || null;
+      if (boundEventSource && freshEventSource && boundEventSource !== freshEventSource) {
+        logApp('warn', '宿主事件源已更换，重新绑定事件订阅');
+        installHostEventSubscriptions(freshCtx);
+        boundEventSource = freshEventSource;
+      }
+    } catch (error) {
+      console.warn(`[${MODULE_NAME}] 事件源看门狗巡检失败`, error);
+    }
+  }, HOST_EVENT_WATCHDOG_INTERVAL_MS);
+}
+
 async function bootstrap() {
   if (globalThis[BOOTSTRAP_RUNTIME_KEY]) return;
   const ctx = getContextSafe();
@@ -4220,15 +4293,14 @@ async function bootstrap() {
   globalThis[BOOTSTRAP_RUNTIME_KEY] = true;
   try {
     initHostEventLogging();
-    onHostEvent(ctx, 'chatChanged', refreshChatBoundViews, '__soullink_chat_changed_handler__');
-    onHostEvent(ctx, 'groupSelected', refreshChatBoundViews, '__soullink_group_selected_handler__');
-    onHostEvent(ctx, 'generationEnded', onAutoArchiveGenerationEnded, AUTO_ARCHIVE_END_HANDLER_KEY);
+    installHostEventSubscriptions(ctx);
+    startHostEventWatchdog();
     injectScribbleFilters();
     createPanel();
     createSphere();
     showSphere();
     await registerMenuItem();
-    logApp('info', `扩展就绪 v${MODULE_VERSION}`);
+    logApp('info', `扩展就绪 v${MODULE_VERSION}`, `generationEnded 事件: ${resolveHostEventType(ctx, 'generationEnded')}`);
   } catch (error) {
     globalThis[BOOTSTRAP_RUNTIME_KEY] = false;
     throw error;
