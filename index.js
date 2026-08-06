@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.7.0';
+const MODULE_VERSION = '0.8.5';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -26,11 +26,14 @@ const API_MODEL_ID = 'soullink-api-model';
 const HOME_LOG_STATUS_ID = 'soullink-home-log-status';
 const LOG_SEARCH_ID = 'soullink-log-search';
 const LOG_MAX_ID = 'soullink-log-max';
+const LOG_SOURCE_ID = 'soullink-log-source';
+const LOG_NOISE_ID = 'soullink-log-noise';
 const LOG_PAUSE_ID = 'soullink-log-pause';
 const LOG_AUTOSCROLL_ID = 'soullink-log-autoscroll';
 const LOG_CLEAR_ID = 'soullink-log-clear';
 const LOG_COPY_ID = 'soullink-log-copy';
 const LOG_EXPORT_ID = 'soullink-log-export';
+const LOG_FULL_BODY_EXPORT_ID = 'soullink-log-fullbody-export';
 const LOG_LIST_ID = 'soullink-log-list';
 const LOG_BACK_ID = 'soullink-log-back-to-latest';
 const LOG_STATUS_ID = 'soullink-log-status';
@@ -61,6 +64,26 @@ const ARCHIVE_ANALYZE_ALL_ID = 'soullink-archive-analyze-all';
 const ARCHIVE_LIST_ID = 'soullink-archive-list';
 const ARCHIVE_STATUS_ID = 'soullink-archive-status';
 const ARCHIVE_CHAT_ID = 'soullink-archive-chat';
+const WORLDBOOK_VIEW_ID = 'soullink-worldbook-view';
+const WORLDBOOK_ICON_CLASS = 'fa-solid fa-book-bookmark';
+const HOME_WORLDBOOK_CARD_ID = 'soullink-home-worldbook-card';
+const HOME_WORLDBOOK_STATUS_ID = 'soullink-home-worldbook-status';
+const WORLDBOOK_STATUS_ID = 'soullink-worldbook-status';
+const WORLDBOOK_CHAT_ID = 'soullink-worldbook-chat';
+const WORLDBOOK_REFRESH_ID = 'soullink-worldbook-refresh';
+const WORLDBOOK_CLEAR_ID = 'soullink-worldbook-clear';
+const WORLDBOOK_LIST_ID = 'soullink-worldbook-list';
+const WORLDBOOK_BANNER_ID = 'soullink-worldbook-banner';
+const WORLD_INFO_POSITION_LABELS = Object.freeze({
+  before: '注入前',
+  after: '注入后',
+  an_top: 'AN 顶部',
+  an_bottom: 'AN 底部',
+  depth: '深度注入',
+  em_top: '示例顶部',
+  em_bottom: '示例底部',
+  outlet: '出口',
+});
 
 const SPHERE_POSITION_KEY = `${MODULE_NAME}_floating_sphere_position`;
 const SPHERE_DRAG_THRESHOLD = 8;
@@ -74,6 +97,14 @@ const MODEL_LIST_TIMEOUT_MS = 20000;
 const LOG_MAX_ENTRIES_DEFAULT = 2000;
 const LOG_RENDER_CAP = 1000;
 const LOG_SEARCH_DEBOUNCE_MS = 120;
+const LOG_DETAIL_CAP = 20000;
+const LOG_REQUEST_BODY_CAP = 6000;
+const LOG_RESPONSE_BODY_CAP = 20000;
+const CONSOLE_NOISE_PREFIXES = Object.freeze([
+  '[WI]',
+  '[Prompt Template]',
+]);
+const LOG_FULL_BODY_MAX = 5;
 const CHAT_COMPLETION_TIMEOUT_MS = 60000;
 const ARCHIVE_RECENT_MESSAGE_COUNT = 4;
 const LOG_LEVELS = Object.freeze(['debug', 'info', 'warn', 'error']);
@@ -118,6 +149,7 @@ const APP_READY_HANDLER_KEY = '__soullink_app_ready_handler__';
 const ESC_KEY_HANDLER_KEY = '__soullink_esc_key_handler__';
 const LOG_CAPTURE_KEY = '__soullink_log_capture__';
 const LOG_EVENT_LOG_KEY = '__soullink_log_event_handler__';
+const NETWORK_CAPTURE_KEY = '__soullink_network_capture__';
 
 const DEFAULT_PROMPTS = Object.freeze({
   archiveSystem: `你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。
@@ -139,9 +171,10 @@ const DEFAULT_PROMPTS = Object.freeze({
 【输入说明】
 - character 是本轮要判断的角色名。
 - current_profile 是该角色当前已记录的档案：标量字段为字符串，列表分节为条目数组（每项含 id 与 content）。
-- recent_messages 是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。
-- world_info_background 是提供的背景补充信息，用 <World_Info></World_Info> 包裹；它不代表该角色亲历或已知，
-  仅供你了解世界观以便合理推断；是否写入该角色记忆，仍须判断该角色是否真的亲历/被告知/目击。
+- 输入消息里的 <Recent_Messages> 块是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。
+- 输入消息里的 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块（由 SillyTavern 世界书规则触发，位置与酒馆一致）
+  是世界书背景补充信息；它们不代表该角色亲历或已知，仅供你了解世界观以便合理推断；
+  是否写入该角色记忆，仍须判断该角色是否真的亲历/被告知/目击。
 - turn_index 是当前对话的消息索引，用于参考，无需输出。
 
 【输出契约】
@@ -168,7 +201,7 @@ const DEFAULT_PROMPTS = Object.freeze({
 - 世界观是角色扮演是否贴合设定的关键：当世界观明显偏离现实（如存在魔法、超自然、异种生理、不同的社会规则或物理法则）时，
   应把每一条与「现实常识」不同的运转规则单独记为一条，宁可多拆几条，也不要浓缩成一句模糊的概括；
   世界观越是不同于现实，记录越要具体、详尽。现实向世界观可保持精简。
-- 记录世界观时，可参照提供的世界背景（world_info_background）
+- 记录世界观时，可参照输入的 <World_Info_Before> / <World_Info_Extra> / <World_Info_After> 世界背景块
   判断哪些设定该角色已知或相信；但只有该角色确实获知（亲历/被告知/目击）的设定才应进入其世界观，
   且应记录「该角色眼中的版本」——同一设定在不同角色眼中可以相信、怀疑、曲解或不知情。
 - 家庭背景/人际关系/记忆较稳定，仅在对话给出明确新信息时才新增或修改。
@@ -282,8 +315,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   modelOptions: [],
   logMaxEntries: LOG_MAX_ENTRIES_DEFAULT,
   logAutoScroll: true,
+  logConsoleNoise: true,
   prompts: DEFAULT_PROMPTS,
   archives: {},
+  worldInfo: { excluded: {} },
 });
 
 const FALLBACK_SETTINGS_STORE = new WeakMap();
@@ -318,6 +353,36 @@ function getHostExtensionSettings(ctx) {
   }
 }
 
+// v0.8.0 之前的默认提示词引用 world_info_background 输入字段（v0.8.0 起世界书改为
+// 按位置注入 <World_Info_Before>/<World_Info_After> 块，该字段已从请求里移除）。
+// 只要提示词仍引用它，就是过时文本：不升级的话模型会一直期待一个不存在的输入字段。
+function isStalePromptText(text) {
+  return typeof text === 'string'
+    && (text.includes('world_info_background') || text.includes('<World_Info></World_Info>'));
+}
+
+// v0.8.1 起世界书注入新增 <World_Info_Extra> 块（AN/深度/示例/出口位置的触发条目）。
+// 对 v0.8.0 默认提示词里描述标记块的两处旧文案做定点替换，保留用户其余自定义内容。
+function migratePromptText(text) {
+  if (typeof text !== 'string') return text;
+  let next = text;
+  next = next.replace(
+    '输入内容的首尾可能带有 <World_Info_Before> 与 <World_Info_After> 标记块',
+    '输入内容可能带有 <World_Info_Before>、<World_Info_Extra> 与 <World_Info_After> 标记块',
+  );
+  next = next.replace(
+    '可参照输入首尾的 <World_Info_Before> / <World_Info_After> 世界背景块',
+    '可参照输入的 <World_Info_Before> / <World_Info_Extra> / <World_Info_After> 世界背景块',
+  );
+  // v0.8.4 起剧情消息从 JSON 输入的 recent_messages 字段移出，独立为 <Recent_Messages> 块，
+  // 对旧默认文案里描述该字段的一行做定点替换，保留用户其余自定义内容。
+  next = next.replace(
+    '- recent_messages 是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。',
+    '- 输入消息里的 <Recent_Messages> 块是近期对话，可能包含该角色不在场的段落——你必须据此判断该角色是否真的能获知。',
+  );
+  return next;
+}
+
 function getSettings(ctx) {
   const root = getHostExtensionSettings(ctx);
   if (!root) throw new Error(`[${MODULE_NAME}] host extension settings are unavailable`);
@@ -338,6 +403,13 @@ function getSettings(ctx) {
     settings.archives = {};
     shouldSave = true;
   }
+  if (!settings.worldInfo || typeof settings.worldInfo !== 'object' || Array.isArray(settings.worldInfo)) {
+    settings.worldInfo = { excluded: {} };
+    shouldSave = true;
+  } else if (!settings.worldInfo.excluded || typeof settings.worldInfo.excluded !== 'object' || Array.isArray(settings.worldInfo.excluded)) {
+    settings.worldInfo.excluded = {};
+    shouldSave = true;
+  }
   const prompts = settings.prompts;
   if (!prompts || typeof prompts !== 'object' || Array.isArray(prompts)) {
     settings.prompts = cloneValue(DEFAULT_PROMPTS);
@@ -347,6 +419,17 @@ function getSettings(ctx) {
       if (typeof prompts[key] !== 'string') {
         prompts[key] = value;
         shouldSave = true;
+      } else if (isStalePromptText(prompts[key])) {
+        console.warn(`[${MODULE_NAME}] 提示词「${key}」引用已移除的 world_info_background 输入字段，已自动升级为新默认`);
+        prompts[key] = value;
+        shouldSave = true;
+      } else {
+        const migrated = migratePromptText(prompts[key]);
+        if (migrated !== prompts[key]) {
+          prompts[key] = migrated;
+          shouldSave = true;
+          console.warn(`[${MODULE_NAME}] 提示词「${key}」已升级：世界书注入新增 <World_Info_Extra> 块`);
+        }
       }
     }
   }
@@ -891,11 +974,13 @@ const PANEL_VIEW_TITLES = Object.freeze({
   [PRESET_VIEW_ID]: '预设',
   [REGISTER_VIEW_ID]: '角色名单',
   [ARCHIVE_VIEW_ID]: '档案系统',
+  [WORLDBOOK_VIEW_ID]: '世界书',
 });
 const PANEL_WIDE_MODES = Object.freeze({
   [LOG_VIEW_ID]: 'is-log-mode',
   [PRESET_VIEW_ID]: 'is-preset-mode',
   [ARCHIVE_VIEW_ID]: 'is-archive-mode',
+  [WORLDBOOK_VIEW_ID]: 'is-worldbook-mode',
 });
 
 function showPanelView(viewId) {
@@ -929,6 +1014,10 @@ function showPanelView(viewId) {
     renderArchiveList();
     logApp('debug', '打开档案系统视图');
   }
+  if (viewId === WORLDBOOK_VIEW_ID) {
+    renderWorldBookList();
+    logApp('debug', '打开世界书视图');
+  }
   const back = document.getElementById(PANEL_BACK_ID);
   if (back) back.style.visibility = viewId === HOME_VIEW_ID ? 'hidden' : 'visible';
   const title = document.getElementById(PANEL_TITLE_ID);
@@ -944,6 +1033,7 @@ function initPanelViews(panel) {
   document.getElementById(HOME_PRESET_CARD_ID)?.addEventListener('click', () => showPanelView(PRESET_VIEW_ID));
   document.getElementById(HOME_REGISTER_CARD_ID)?.addEventListener('click', () => showPanelView(REGISTER_VIEW_ID));
   document.getElementById(HOME_ARCHIVE_CARD_ID)?.addEventListener('click', () => showPanelView(ARCHIVE_VIEW_ID));
+  document.getElementById(HOME_WORLDBOOK_CARD_ID)?.addEventListener('click', () => showPanelView(WORLDBOOK_VIEW_ID));
   panel.dataset.viewsReady = 'true';
 }
 
@@ -1009,6 +1099,11 @@ function createPanel() {
               <span class="soullink-home__card-title">档案系统</span>
               <span id="${HOME_ARCHIVE_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无档案</span>
             </button>
+            <button type="button" id="${HOME_WORLDBOOK_CARD_ID}" class="soullink-home__card soullink-home__card--worldbook" title="打开世界书（触发规则跟随 SillyTavern）">
+              <span class="soullink-home__card-icon"><span class="${WORLDBOOK_ICON_CLASS}"></span></span>
+              <span class="soullink-home__card-title">世界书</span>
+              <span id="${HOME_WORLDBOOK_STATUS_ID}" class="soullink-home__card-status" data-state="idle">跟随酒馆规则</span>
+            </button>
           </div>
         </section>
         <section id="${API_VIEW_ID}" class="soullink-view" aria-hidden="true">
@@ -1052,6 +1147,16 @@ function createPanel() {
             </div>
             <div class="soullink-log__tools">
               <input id="${LOG_SEARCH_ID}" class="soullink-input soullink-log__search" type="search" placeholder="🔍 搜索日志内容…" autocomplete="off" spellcheck="false" />
+              <select id="${LOG_SOURCE_ID}" class="soullink-input soullink-log__source" title="按来源筛选日志">
+                <option value="">全部来源</option>
+                <option value="network">网络请求</option>
+                <option value="soulink">SoulLink</option>
+                <option value="console">控制台</option>
+                <option value="event">宿主事件</option>
+                <option value="external">外部扩展</option>
+                <option value="window">页面错误</option>
+                <option value="promise">Promise 拒绝</option>
+              </select>
               <select id="${LOG_MAX_ID}" class="soullink-input soullink-log__max" title="内存中保留的日志条数，超出自动丢弃最旧">
                 <option value="500">500 条</option>
                 <option value="2000" selected>2000 条</option>
@@ -1060,11 +1165,13 @@ function createPanel() {
               </select>
             </div>
             <div class="soullink-log__actions">
-              <button type="button" id="${LOG_PAUSE_ID}" class="soullink-log__action" title="暂停时新日志只入内存、不再追加到列表">⏸ 暂停</button>
-              <button type="button" id="${LOG_AUTOSCROLL_ID}" class="soullink-log__action is-active" title="新日志自动滚动到底部">⏬ 跟随</button>
+              <button type="button" id="${LOG_PAUSE_ID}" class="soullink-log__action" title="暂停：新日志先缓存（+N），不追加到列表；点「继续」一次性显示">⏸ 暂停</button>
+              <button type="button" id="${LOG_AUTOSCROLL_ID}" class="soullink-log__action is-active" title="跟随：新日志自动滚动到底部（点一下关闭）">⏬ 跟随</button>
               <button type="button" id="${LOG_CLEAR_ID}" class="soullink-log__action" title="清空缓冲中的所有日志">🧹 清空</button>
               <button type="button" id="${LOG_COPY_ID}" class="soullink-log__action" title="复制全部日志为纯文本">📋 复制</button>
               <button type="button" id="${LOG_EXPORT_ID}" class="soullink-log__action" title="导出完整 JSON 日志文件">💾 导出</button>
+              <button type="button" id="${LOG_FULL_BODY_EXPORT_ID}" class="soullink-log__action" title="导出最近 ${LOG_FULL_BODY_MAX} 次对话请求的完整请求体/响应体（未截断）">📦 完整请求体</button>
+              <button type="button" id="${LOG_NOISE_ID}" class="soullink-log__action is-active" title="过滤已知噪音（世界书扫描 [WI] / 宏变量 dump [Prompt Template]）">🔇 过滤噪音</button>
             </div>
             <div class="soullink-log__console">
               <div id="${LOG_LIST_ID}" class="soullink-log__list" role="log" aria-live="off" aria-label="运行日志"></div>
@@ -1072,7 +1179,7 @@ function createPanel() {
             </div>
             <div class="soullink-log__status">
               <span id="${LOG_STATUS_ID}">共 0 条</span>
-              <span id="${LOG_PAUSED_ID}" class="soullink-log__paused" hidden>已暂停 · 新增 +0</span>
+              <span id="${LOG_PAUSED_ID}" class="soullink-log__paused" title="暂停期间新日志只入内存（+N），点「继续」后一次性显示" hidden>已暂停 · 新增 +0</span>
             </div>
           </div>
         </section>
@@ -1122,6 +1229,19 @@ function createPanel() {
             <div id="${ARCHIVE_LIST_ID}" class="soullink-archive__list"></div>
           </div>
         </section>
+        <section id="${WORLDBOOK_VIEW_ID}" class="soullink-view" aria-hidden="true">
+          <div class="soullink-worldbook">
+            <p class="soullink-worldbook__note">展示当前聊天激活的世界书条目。触发规则完全由 SillyTavern 决定（扫描深度 / 递归 / 概率 / 预算等）；勾选「排除」的条目无论是否触发，都不会注入本程序的档案分析提示词。条目按「常驻 → 本次触发 → 未触发 → 禁用」排序，每本书可用搜索框按条目名称筛选。触发条目按位置注入：注入前/注入后进首尾块，AN/深度/示例/出口进 <World_Info_Extra> 补充块。</p>
+            <div class="soullink-worldbook__toolbar">
+              <span id="${WORLDBOOK_STATUS_ID}" class="soullink-worldbook__status">读取中…</span>
+              <span id="${WORLDBOOK_CHAT_ID}" class="soullink-worldbook__chat"></span>
+              <button type="button" id="${WORLDBOOK_CLEAR_ID}" class="soullink-btn soullink-btn--ghost soullink-worldbook__clear" hidden>清除排除</button>
+              <button type="button" id="${WORLDBOOK_REFRESH_ID}" class="soullink-btn soullink-worldbook__refresh">↻ 刷新</button>
+            </div>
+            <div id="${WORLDBOOK_BANNER_ID}" class="soullink-worldbook__banner" hidden></div>
+            <div id="${WORLDBOOK_LIST_ID}" class="soullink-worldbook__list"></div>
+          </div>
+        </section>
       </div>
       <div class="soullink-panel__footer">
         <span>v${MODULE_VERSION}</span>
@@ -1137,6 +1257,7 @@ function createPanel() {
   initPresetSection(panel);
   initRegisterSection(panel);
   initArchiveSection(panel);
+  initWorldBookSection(panel);
   panel.querySelector('.soullink-panel__close')?.addEventListener('click', closePanel);
   if (!globalThis[ESC_KEY_HANDLER_KEY]) {
     globalThis[ESC_KEY_HANDLER_KEY] = (event) => {
@@ -1297,15 +1418,25 @@ function initApiSection(panel) {
 
 // ---------- 日志系统：捕获与存储 ----------
 const CONSOLE_ORIGINALS = {};
-let logEntries = [];
-let logSequence = 0;
+// 热重载共享状态：脚本重新执行时，新旧实例共用同一份缓冲与暂停/序列状态，
+// 保证「暂停」「继续」按钮与日志捕获管道永远指向同一份数据（热重载不丢状态）。
+const LOG_STATE_KEY = '__soullinkLogState__';
+const logState = globalThis[LOG_STATE_KEY] || (globalThis[LOG_STATE_KEY] = {
+  entries: [],
+  sequence: 0,
+  paused: false,
+  pausedCount: 0,
+  pausedAtId: 0,
+});
+let logEntries = logState.entries;
 let logMaxEntries = LOG_MAX_ENTRIES_DEFAULT;
 let logAutoScroll = true;
-let logPaused = false;
-let logPausedCount = 0;
 let logLevelFilter = '';
+let logSourceFilter = '';
+let logConsoleNoise = true;
 let logSearchQuery = '';
 let logVisibleCount = 0;
+let fullBodyCaptures = [];
 let logStatsRafId = 0;
 let logSearchTimer = null;
 
@@ -1364,20 +1495,38 @@ function buildLogMessage(args) {
   return message.length > 4000 ? `${message.slice(0, 4000)}…(截断)` : message;
 }
 
-function pushLogEntry(level, source, args) {
+function pushLogEntry(level, source, args, detail) {
   try {
     const safeLevel = LOG_LEVELS.includes(level) ? level : 'info';
     const timestamp = Date.now();
-    logEntries.push({
-      id: ++logSequence,
+    const entry = {
+      id: ++logState.sequence,
       ts: timestamp,
       time: formatLogTime(timestamp),
       level: safeLevel,
       source: String(source || 'app').slice(0, 24),
-      message: buildLogMessage(Array.isArray(args) ? args : [args]),
-    });
+      message: redactSensitive(buildLogMessage(Array.isArray(args) ? args : [args])),
+    };
+    if (detail) entry.detail = redactSensitive(String(detail)).slice(0, LOG_DETAIL_CAP);
+    // 控制台噪音过滤（如 Tavern 世界书扫描 [WI]、宏变量全量 dump [Prompt Template]）
+    if (source === 'console' && safeLevel === 'debug' && logConsoleNoise) {
+      if (CONSOLE_NOISE_PREFIXES.some((prefix) => entry.message.startsWith(prefix))) return;
+    }
+    // 连续重复折叠：同一级别/来源/内容紧挨着出现时，只更新最后一条的计数与时间
+    const last = logEntries[logEntries.length - 1];
+    if (last && last.level === entry.level && last.source === entry.source
+      && last.message === entry.message && (last.detail || '') === (entry.detail || '')) {
+      last.repeat = (last.repeat || 1) + 1;
+      last.ts = timestamp;
+      last.time = entry.time;
+      if (logState.paused) logState.pausedCount += 1;
+      refreshLastLogRow();
+      scheduleLogStats();
+      return;
+    }
+    logEntries.push(entry);
     if (logEntries.length > logMaxEntries) logEntries.splice(0, logEntries.length - logMaxEntries);
-    if (logPaused) logPausedCount += 1;
+    if (logState.paused) logState.pausedCount += 1;
     appendLiveLogEntry(logEntries[logEntries.length - 1]);
     scheduleLogStats();
   } catch (error) {
@@ -1461,6 +1610,242 @@ function initHostEventLogging() {
   }
 }
 
+// ---------- 日志系统：网络请求捕获 ----------
+function redactSensitive(text) {
+  return String(text || '')
+    .replace(/("(?:api[_-]?key|zapikey|key|password|proxy_password|authorization|token)"\s*:\s*")[^"]*(")/gi, '$1***$2')
+    .replace(/(Authorization:\s*Bearer\s+)[A-Za-z0-9._-]+/gi, '$1***')
+    .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1***')
+    .replace(/\b(sk-[A-Za-z0-9_-]{12,})\b/g, 'sk-***')
+    .replace(/\b(tauri-invoke-key:\s*)[^\s]+/gi, '$1***');
+}
+
+function prettyJsonOrRaw(text, cap) {
+  const trimmed = String(text || '');
+  if (!trimmed) return '(无)';
+  try {
+    const parsed = JSON.parse(trimmed);
+    const pretty = JSON.stringify(parsed, null, 2);
+    return pretty.length > cap ? `${pretty.slice(0, cap)}…(截断)` : pretty;
+  } catch {
+    return trimmed.length > cap ? `${trimmed.slice(0, cap)}…(截断)` : trimmed;
+  }
+}
+
+function formatHeadersForLog(headers) {
+  try {
+    const normalized = new Headers(headers || {});
+    const lines = [];
+    normalized.forEach((value, key) => {
+      const lower = key.toLowerCase();
+      const redacted = /authorization|api[_-]?key|password|proxy_password|token|cookie|invoke/i.test(lower) ? '***' : value;
+      lines.push(`${key}: ${redacted}`);
+    });
+    return lines.join('\n') || '(无)';
+  } catch {
+    return '(无法读取)';
+  }
+}
+
+function formatBodyForLog(body) {
+  if (body === undefined || body === null) return '(无)';
+  if (typeof body === 'string') return redactSensitive(prettyJsonOrRaw(body, LOG_REQUEST_BODY_CAP));
+  if (body instanceof URLSearchParams) return redactSensitive(String(body).slice(0, LOG_REQUEST_BODY_CAP));
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    const lines = [];
+    body.forEach((value, key) => {
+      const text = typeof value === 'string' ? value : `[File ${value.name || '?'} ${value.size || '?'}B]`;
+      lines.push(`${key}: ${/key|password|token/i.test(key) ? '***' : text}`);
+    });
+    return lines.join('\n') || '(空)';
+  }
+  if (body instanceof Blob) return `[Blob ${body.size} 字节]`;
+  if (body instanceof ArrayBuffer) return `[ArrayBuffer ${body.byteLength} 字节]`;
+  if (body instanceof ReadableStream) return '[ReadableStream]';
+  return `[${Object.prototype.toString.call(body)}]`;
+}
+
+async function readStreamText(stream, cap) {
+  if (!stream) return '';
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  try {
+    while (text.length < cap) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    if (text.length >= cap) {
+      try {
+        await reader.cancel();
+      } catch {}
+      text = `${text.slice(0, cap)}…(截断)`;
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {}
+  }
+  return text;
+}
+
+function isChatCompletionUrl(url) {
+  return /chat-completions|generate_chat_completion/i.test(String(url || ''));
+}
+
+async function readStreamFully(stream) {
+  if (!stream) return '';
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {}
+  }
+  return text;
+}
+
+function pushFullBodyCapture(capture) {
+  fullBodyCaptures.push(capture);
+  if (fullBodyCaptures.length > LOG_FULL_BODY_MAX) fullBodyCaptures.splice(0, fullBodyCaptures.length - LOG_FULL_BODY_MAX);
+  pushLogEntry('debug', 'network', ['完整请求体已捕获', `${capture.method} ${capture.url}`]);
+}
+
+async function describeFetchRequest(args) {
+  const [input, init] = args;
+  let url = '';
+  let method = 'GET';
+  let headers = null;
+  let bodyText = '(无)';
+  let fullBody = '';
+  if (input instanceof Request) {
+    url = input.url;
+    method = input.method || 'GET';
+    headers = input.headers;
+    try {
+      const clone = input.clone();
+      const rawBody = await readStreamText(clone.body, LOG_REQUEST_BODY_CAP);
+      bodyText = rawBody ? redactSensitive(prettyJsonOrRaw(rawBody, LOG_REQUEST_BODY_CAP)) : '(无)';
+      if (isChatCompletionUrl(url)) {
+        const fullClone = input.clone();
+        fullBody = redactSensitive(await readStreamFully(fullClone.body));
+      }
+    } catch {
+      bodyText = '(请求体已消费，无法读取)';
+    }
+  } else {
+    url = String(input);
+    method = String(init?.method || 'GET').toUpperCase();
+    headers = init?.headers || null;
+    bodyText = formatBodyForLog(init?.body);
+    if (isChatCompletionUrl(url)) {
+      fullBody = redactSensitive(prettyJsonOrRaw(String(init?.body ?? ''), Number.MAX_SAFE_INTEGER));
+    }
+  }
+  return {
+    url,
+    method,
+    fullBody,
+    detail: `请求头:\n${formatHeadersForLog(headers)}\n请求体:\n${bodyText}`,
+  };
+}
+
+async function readResponseBodyForLog(response, url) {
+  try {
+    const cappedClone = response.clone();
+    const capped = await readStreamText(cappedClone.body, LOG_RESPONSE_BODY_CAP);
+    let full = '';
+    if (isChatCompletionUrl(url)) {
+      const fullClone = response.clone();
+      full = redactSensitive(await readStreamFully(fullClone.body));
+    }
+    return { capped, full };
+  } catch {
+    return { capped: '', full: '' };
+  }
+}
+
+function handleNetworkEvent(event) {
+  try {
+    if (event.kind === 'request') {
+      pushLogEntry('debug', 'network', [`${event.method} ${event.url}`], event.detail);
+      return;
+    }
+    if (event.kind === 'error') {
+      pushLogEntry('error', 'network', [`请求失败 ${event.method} ${event.url}`, String(event.error?.message || event.error)], event.detail);
+      return;
+    }
+    const { response, method, url, detail, fullBody, startedAt } = event;
+    const duration = Date.now() - startedAt;
+    const level = response.status >= 500 ? 'error' : (response.status >= 400 ? 'warn' : 'debug');
+    const message = `${response.status} ${method} ${url} · ${duration}ms`;
+    readResponseBodyForLog(response, url)
+      .then(({ capped, full }) => {
+        pushLogEntry(level, 'network', [message], `${detail}\n\n响应头:\n${formatHeadersForLog(response.headers)}\n响应体:\n${redactSensitive(capped) || '(空)'}`);
+        if (fullBody || full) {
+          pushFullBodyCapture({ url, method, requestBody: fullBody, responseBody: full, at: new Date().toISOString() });
+        }
+      })
+      .catch(() => {
+        pushLogEntry(level, 'network', [message], `${detail}\n\n响应体: (读取失败)`);
+      });
+  } catch (error) {
+    try {
+      CONSOLE_ORIGINALS.error?.apply(globalThis.console, ['[SoulLink] 网络日志处理失败', error]);
+    } catch {}
+  }
+}
+
+function initNetworkCapture() {
+  if (typeof globalThis.window === 'undefined') return;
+  try {
+    const state = globalThis[NETWORK_CAPTURE_KEY] || (globalThis[NETWORK_CAPTURE_KEY] = { handlers: [], original: null });
+    if (!state.original && typeof globalThis.fetch === 'function') {
+      state.original = globalThis.fetch.bind(globalThis);
+      globalThis.fetch = async (...args) => {
+        const requestInfo = await describeFetchRequest(args);
+        const startedAt = Date.now();
+        for (const handler of state.handlers) {
+          try {
+            handler({ kind: 'request', ...requestInfo, startedAt });
+          } catch {}
+        }
+        let response;
+        try {
+          response = await state.original(...args);
+        } catch (error) {
+          for (const handler of state.handlers) {
+            try {
+              handler({ kind: 'error', ...requestInfo, error, startedAt });
+            } catch {}
+          }
+          throw error;
+        }
+        for (const handler of state.handlers) {
+          try {
+            handler({ kind: 'response', ...requestInfo, response, startedAt });
+          } catch {}
+        }
+        return response;
+      };
+    }
+    // 热重载时沿用已安装的 fetch 包装，只替换捕获目标。
+    state.handlers = [handleNetworkEvent];
+  } catch (error) {
+    try {
+      globalThis.console?.error?.('[SoulLink] 网络日志捕获初始化失败', error);
+    } catch {}
+  }
+}
 function scheduleFrame(callback) {
   if (typeof globalThis.requestAnimationFrame === 'function') return globalThis.requestAnimationFrame(callback);
   return setTimeout(callback, 16);
@@ -1468,13 +1853,18 @@ function scheduleFrame(callback) {
 
 function entryMatchesLog(entry) {
   if (logLevelFilter && entry.level !== logLevelFilter) return false;
+  if (logSourceFilter && entry.source !== logSourceFilter) return false;
   const query = logSearchQuery.trim().toLowerCase();
   if (!query) return true;
-  return `${entry.time} ${entry.level} ${entry.source} ${entry.message}`.toLowerCase().includes(query);
+  return `${entry.time} ${entry.level} ${entry.source} ${entry.message} ${entry.detail || ''}`.toLowerCase().includes(query);
 }
 
 function getVisibleLogEntries() {
-  return logEntries.filter(entryMatchesLog);
+  // 暂停时只渲染暂停时刻之前的快照：暂停期间缓冲的新日志不会因过滤/搜索/重开视图泄漏到列表
+  const base = logState.paused && logState.pausedAtId > 0
+    ? logEntries.filter((entry) => entry.id <= logState.pausedAtId)
+    : logEntries;
+  return base.filter(entryMatchesLog);
 }
 
 function createLogRow(entry) {
@@ -1495,7 +1885,21 @@ function createLogRow(entry) {
   text.className = 'soullink-log__text';
   text.textContent = entry.message;
   text.title = entry.message;
+  row.dataset.id = String(entry.id);
   row.append(time, level, source, text);
+  if (entry.detail) {
+    const detail = document.createElement('pre');
+    detail.className = 'soullink-log__detail';
+    detail.textContent = entry.detail;
+    row.appendChild(detail);
+  }
+  if (entry.repeat > 1) {
+    const repeat = document.createElement('span');
+    repeat.className = 'soullink-log__repeat';
+    repeat.textContent = `×${entry.repeat}`;
+    repeat.title = `同一内容连续出现 ${entry.repeat} 次`;
+    row.appendChild(repeat);
+  }
   row.addEventListener('click', () => row.classList.toggle('is-expanded'));
   return row;
 }
@@ -1552,11 +1956,34 @@ function renderLogList() {
   updateLogBackButton();
 }
 
+function refreshLastLogRow() {
+  const list = document.getElementById(LOG_LIST_ID);
+  const view = document.getElementById(LOG_VIEW_ID);
+  const entry = logEntries[logEntries.length - 1];
+  if (!list || !view || !entry || !view.classList.contains('is-active') || logState.paused) return;
+  const lastRow = list.querySelector('.soullink-log__row:last-child');
+  if (!lastRow || lastRow.dataset.id !== String(entry.id)) return;
+  const timeEl = lastRow.querySelector('.soullink-log__time');
+  if (timeEl) timeEl.textContent = entry.time;
+  let badge = lastRow.querySelector('.soullink-log__repeat');
+  if (entry.repeat > 1) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'soullink-log__repeat';
+      lastRow.appendChild(badge);
+    }
+    badge.textContent = `×${entry.repeat}`;
+    badge.title = `同一内容连续出现 ${entry.repeat} 次`;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
 function appendLiveLogEntry(entry) {
   const list = document.getElementById(LOG_LIST_ID);
   const view = document.getElementById(LOG_VIEW_ID);
   if (!list || !view || !entry) return;
-  if (!view.classList.contains('is-active') || logPaused) return;
+  if (!view.classList.contains('is-active') || logState.paused) return;
   if (!entryMatchesLog(entry)) return;
   const shouldFollow = logAutoScroll && isLogAtBottom(list);
   list.querySelector('.soullink-log__empty')?.remove();
@@ -1586,8 +2013,8 @@ function updateLogStats() {
   if (status) status.textContent = `共 ${total} 条`;
   const paused = document.getElementById(LOG_PAUSED_ID);
   if (paused) {
-    paused.hidden = !logPaused;
-    if (logPaused) paused.textContent = `已暂停 · 新增 +${logPausedCount}`;
+    paused.hidden = !logState.paused;
+    if (logState.paused) paused.textContent = `已暂停 · 新增 +${logState.pausedCount}`;
   }
   const homeStatus = document.getElementById(HOME_LOG_STATUS_ID);
   if (homeStatus) {
@@ -1611,7 +2038,12 @@ function scheduleLogStats() {
 
 function buildLogExportText() {
   return `${logEntries
-    .map((entry) => `${entry.time} [${entry.level}] (${entry.source}) ${entry.message}`)
+    .map((entry) => {
+      const suffix = entry.repeat > 1 ? ` (×${entry.repeat})` : '';
+      const line = `${entry.time} [${entry.level}] (${entry.source}) ${entry.message}${suffix}`;
+      if (!entry.detail) return line;
+      return `${line}\n${entry.detail.split('\n').map((detailLine) => `  ${detailLine}`).join('\n')}`;
+    })
     .join('\n')}\n`;
 }
 
@@ -1626,11 +2058,27 @@ function initLogView(panel) {
     if (!settings) return;
     logMaxEntries = clampInt(settings.logMaxEntries, 100, 20000, LOG_MAX_ENTRIES_DEFAULT);
     logAutoScroll = settings.logAutoScroll !== false;
+    logConsoleNoise = settings.logConsoleNoise !== false;
   };
   refreshPrefs();
 
   const autoscroll = document.getElementById(LOG_AUTOSCROLL_ID);
   if (autoscroll) autoscroll.classList.toggle('is-active', logAutoScroll);
+
+  const noiseToggle = document.getElementById(LOG_NOISE_ID);
+  if (noiseToggle) noiseToggle.classList.toggle('is-active', logConsoleNoise);
+  noiseToggle?.addEventListener('click', () => {
+    logConsoleNoise = !logConsoleNoise;
+    noiseToggle.classList.toggle('is-active', logConsoleNoise);
+    noiseToggle.title = logConsoleNoise ? '过滤已知噪音（世界书扫描 [WI] / 宏变量 dump [Prompt Template]）' : '不过滤控制台噪音';
+    const ctx = getCtx();
+    if (ctx) {
+      getSettings(ctx).logConsoleNoise = logConsoleNoise;
+      saveSettings(ctx);
+    }
+    renderLogList();
+    updateLogStats();
+  });
 
   panel.querySelectorAll('.soullink-log__chip').forEach((chip) =>
     chip.addEventListener('click', () => {
@@ -1652,15 +2100,38 @@ function initLogView(panel) {
   });
 
   document.getElementById(LOG_PAUSE_ID)?.addEventListener('click', () => {
-    logPaused = !logPaused;
-    logPausedCount = 0;
+    logState.paused = !logState.paused;
+    logState.pausedCount = 0;
+    if (logState.paused) {
+      // 记录暂停时刻的可见边界：暂停期间的新日志只入内存，恢复后一次性显示
+      logState.pausedAtId = logEntries.length ? logEntries[logEntries.length - 1].id : 0;
+    } else {
+      logState.pausedAtId = 0;
+      renderLogList();
+    }
     const pause = document.getElementById(LOG_PAUSE_ID);
     if (pause) {
-      pause.textContent = logPaused ? '▶ 继续' : '⏸ 暂停';
-      pause.classList.toggle('is-active', logPaused);
+      pause.textContent = logState.paused ? '▶ 继续' : '⏸ 暂停';
+      pause.classList.toggle('is-active', logState.paused);
+      pause.title = logState.paused
+        ? '已暂停：新日志先缓存（+N），不追加到列表；点「继续」一次性显示'
+        : '暂停：新日志先缓存（+N），不再追加到列表';
     }
-    if (!logPaused) renderLogList();
     updateLogStats();
+  });
+
+  autoscroll?.addEventListener('click', () => {
+    logAutoScroll = !logAutoScroll;
+    autoscroll.classList.toggle('is-active', logAutoScroll);
+    autoscroll.title = logAutoScroll
+      ? '跟随：新日志自动滚动到底部（点一下关闭）'
+      : '已停止跟随：新日志仍追加，但不再自动滚动';
+    if (logAutoScroll) scrollLogToBottom(document.getElementById(LOG_LIST_ID));
+    const ctx = getCtx();
+    if (ctx) {
+      getSettings(ctx).logAutoScroll = logAutoScroll;
+      saveSettings(ctx);
+    }
   });
 
   autoscroll?.addEventListener('click', () => {
@@ -1672,6 +2143,13 @@ function initLogView(panel) {
       getSettings(ctx).logAutoScroll = logAutoScroll;
       saveSettings(ctx);
     }
+  });
+
+  const sourceSelect = document.getElementById(LOG_SOURCE_ID);
+  sourceSelect?.addEventListener('change', () => {
+    logSourceFilter = sourceSelect.value || '';
+    renderLogList();
+    updateLogStats();
   });
 
   const maxSelect = document.getElementById(LOG_MAX_ID);
@@ -1698,7 +2176,8 @@ function initLogView(panel) {
 
   document.getElementById(LOG_CLEAR_ID)?.addEventListener('click', () => {
     logEntries.length = 0;
-    logPausedCount = 0;
+    logState.pausedCount = 0;
+    logState.pausedAtId = 0;
     renderLogList();
     updateLogStats();
     globalThis.toastr?.info?.('日志已清空', `[${MODULE_NAME}]`);
@@ -1744,6 +2223,25 @@ function initLogView(panel) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 
+  document.getElementById(LOG_FULL_BODY_EXPORT_ID)?.addEventListener('click', () => {
+    const payload = {
+      app: MODULE_NAME,
+      version: MODULE_VERSION,
+      exportedAt: new Date().toISOString(),
+      count: fullBodyCaptures.length,
+      captures: fullBodyCaptures,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `soullink-fullbody-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
   const list = document.getElementById(LOG_LIST_ID);
   list?.addEventListener('scroll', () => updateLogBackButton());
   document.getElementById(LOG_BACK_ID)?.addEventListener('click', () => {
@@ -1768,6 +2266,8 @@ function exposeLogApi() {
     log: (...args) => pushLogEntry('info', 'external', args),
     clear: () => {
       logEntries.length = 0;
+      logState.pausedCount = 0;
+      logState.pausedAtId = 0;
       renderLogList();
       updateLogStats();
     },
@@ -1927,6 +2427,7 @@ function initPresetSection(panel) {
 }
 initLogCapture();
 exposeLogApi();
+initNetworkCapture();
 
 // ---------- 注册系统与档案系统：数据模型 ----------
 const archiveAnalysisState = {}; // 角色名 -> { state: 'idle'|'busy'|'ok'|'error', message }
@@ -2420,6 +2921,7 @@ function initArchiveSection(panel) {
 function refreshHomeStatuses() {
   refreshHomeRegisterStatus();
   refreshHomeArchiveStatus();
+  refreshHomeWorldBookStatus();
 }
 
 function refreshHomeRegisterStatus() {
@@ -2459,6 +2961,7 @@ function refreshChatBoundViews() {
   if (!activeView) return;
   if (activeView.id === REGISTER_VIEW_ID) renderRegisterList();
   if (activeView.id === ARCHIVE_VIEW_ID) renderArchiveList();
+  if (activeView.id === WORLDBOOK_VIEW_ID) renderWorldBookList();
 }
 
 // ---------- 档案分析：AI 调用 ----------
@@ -2472,27 +2975,573 @@ function getRecentMessages(count) {
   }));
 }
 
-function buildWorldInfoText(recentMessages) {
-  const ctx = getContextSafe();
-  const worldInfo = ctx?.worldInfo;
-  if (!worldInfo) return '';
-  const entries = worldInfo instanceof Map
-    ? Array.from(worldInfo.values())
-    : Object.values(worldInfo);
-  const recentText = recentMessages.map((message) => message.content).join('\n');
-  const active = [];
-  for (const entry of entries) {
-    if (!entry || entry.enabled === false) continue;
-    const content = String(entry.content || '').trim();
-    if (!content) continue;
-    const keys = String(entry.keys || '').split(',').map((key) => key.trim()).filter(Boolean);
-    if (entry.constant === true || keys.length === 0 || keys.some((key) => recentText.includes(key))) {
-      active.push(content);
+// ---------- 世界书系统 ----------
+// 触发规则完全交给 SillyTavern：ctx.getWorldInfoPrompt 是酒馆自己的世界书引擎
+// （扫描深度 / 递归扫描 / 概率 / 预算 / 粘性冷却等全部由它决定），本程序只负责
+// 「读取激活结果 → 按排除名单过滤 → 按酒馆的 before/after 位置注入」。
+// TauriTavern 的 getWorldInfoPrompt 会额外返回 worldInfoActivation.entries
+// （每个触发条目的 world+uid 稳定身份、内容与位置），这是「按条目排除」的基础；
+// 未提供该字段的宿主降级为「原样注入酒馆拼好的文本」，条目排除不可用。
+// 注意：绝不自己实现触发规则——按关键词自己过滤就是隔壁 NPC Tracker 的降级路径，
+// 那会绕过酒馆的概率 / 预算 / 递归 / 粘性冷却等语义，属于要避免的设计。
+
+function getStWorldInfoIncludeNames() {
+  // 酒馆「世界书扫描包含角色名前缀」的设置（默认开启）。设置面板常驻 DOM 时读实时值。
+  const checkbox = document.getElementById('world_info_include_names');
+  if (checkbox && typeof checkbox.checked === 'boolean') return checkbox.checked;
+  return true;
+}
+
+// 与酒馆生成时构造扫描 chat 的方式一致：非 system 消息、可选 name 前缀、最新在前。
+// 注意：必须是「最新在前」，NPC Tracker 传正序 chat 会让触发扫描作用在旧消息上。
+function buildWorldInfoScanChat(ctx) {
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  const includeNames = getStWorldInfoIncludeNames();
+  const lines = [];
+  for (const message of chat) {
+    if (!message || message.is_system) continue;
+    const text = String(message.mes || '').trim();
+    if (!text) continue;
+    const name = String(message.name || '').trim();
+    lines.push(includeNames && name ? `${name}: ${text}` : text);
+  }
+  return lines.reverse();
+}
+
+// 与酒馆生成时构造 globalScanData 的方式一致（见 ST generateRawData）：角色卡字段
+// （描述/性格/深度提示/场景/创作备注）+ 当前 persona，供「匹配角色描述 / 匹配场景」等
+// 触发条件使用；trigger 固定为 normal，对应普通生成（GENERATION_TYPE_TRIGGERS 包含 normal）。
+function buildWorldInfoGlobalScanData(ctx) {
+  const scanData = {
+    personaDescription: '',
+    characterDescription: '',
+    characterPersonality: '',
+    characterDepthPrompt: '',
+    scenario: '',
+    creatorNotes: '',
+    trigger: 'normal',
+  };
+  if (!ctx || typeof ctx.getCharacterCardFields !== 'function') return scanData;
+  try {
+    const fields = ctx.getCharacterCardFields() || {};
+    scanData.personaDescription = String(fields.persona ?? '');
+    scanData.characterDescription = String(fields.description ?? '');
+    scanData.characterPersonality = String(fields.personality ?? '');
+    scanData.characterDepthPrompt = String(fields.charDepthPrompt ?? '');
+    scanData.scenario = String(fields.scenario ?? '');
+    scanData.creatorNotes = String(fields.creatorNotes ?? '');
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] getCharacterCardFields failed`, error);
+  }
+  return scanData;
+}
+
+async function getStWorldInfoActivation(ctx) {
+  if (!ctx || typeof ctx.getWorldInfoPrompt !== 'function') return null;
+  try {
+    const scanChat = buildWorldInfoScanChat(ctx);
+    const maxContext = Number(ctx.maxContext) || 0;
+    // 第三参传 true 表示 dry run：只计算激活结果，不派发 WORLD_INFO_ACTIVATED 等副作用事件。
+    // 第四参 globalScanData 必须传：TauriTavern 的 getWorldInfoPrompt 会直接读
+    // globalScanData.trigger 组装 worldInfoActivation，不传会在其内部抛
+    // "Cannot read properties of undefined (reading 'trigger')"，导致整个世界书系统静默降级。
+    const result = await ctx.getWorldInfoPrompt(
+      scanChat,
+      maxContext > 0 ? maxContext : undefined,
+      true,
+      buildWorldInfoGlobalScanData(ctx),
+    );
+    return result && typeof result === 'object' ? result : null;
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] getWorldInfoPrompt failed`, error);
+    return null;
+  }
+}
+
+// 排除名单的身份键：书名 + 条目 uid（酒馆自己的稳定身份），
+// 不用显示名——显示名可能重复 / 被改写，NPC Tracker 的「书名 :: 条目名」匹配
+// 还需要 sanitize 各种脏数据，属于不必要的脆弱设计。
+function worldInfoEntryKey(bookName, uid) {
+  return `${String(bookName || '').trim()}\u0000${String(uid ?? '').trim()}`;
+}
+
+function getWorldInfoExcludedKeys(settings) {
+  const keys = new Set();
+  const excluded = settings?.worldInfo?.excluded;
+  if (!excluded || typeof excluded !== 'object') return keys;
+  for (const [bookName, uids] of Object.entries(excluded)) {
+    if (!bookName || !Array.isArray(uids)) continue;
+    for (const uid of uids) {
+      if (uid !== undefined && uid !== null && uid !== '') keys.add(worldInfoEntryKey(bookName, uid));
     }
   }
-  if (active.length === 0) return '';
-  return `<World_Info>\n${active.join('\n\n')}\n</World_Info>`;
+  return keys;
 }
+
+function isWorldInfoEntryExcluded(excludedKeys, entry) {
+  if (!excludedKeys || excludedKeys.size === 0) return false;
+  const world = String(entry?.world || '').trim();
+  const uid = String(entry?.uid ?? '').trim();
+  if (!world || !uid) return false;
+  return excludedKeys.has(worldInfoEntryKey(world, uid));
+}
+
+function normalizeWorldInfoPosition(position) {
+  // TauriTavern 的 worldInfoActivation.entries 里 position 已是字符串名（before/after/...），
+  // loadWorldInfo 的原始书条目里是数字（0-7），两种都要兼容。
+  if (position === 'before' || position === 'after' || position === 'an_top'
+    || position === 'an_bottom' || position === 'depth' || position === 'em_top'
+    || position === 'em_bottom' || position === 'outlet') {
+    return position;
+  }
+  switch (Number(position)) {
+    case 0: return 'before';
+    case 1: return 'after';
+    case 2: return 'an_top';
+    case 3: return 'an_bottom';
+    case 4: return 'depth';
+    case 5: return 'em_top';
+    case 6: return 'em_bottom';
+    case 7: return 'outlet';
+    default: return undefined;
+  }
+}
+
+function getWorldInfoPositionLabel(position) {
+  return WORLD_INFO_POSITION_LABELS[position] || '未知位置';
+}
+
+function getWorldInfoEntryDisplayName(entry) {
+  if (!entry || typeof entry !== 'object') return String(entry ?? '');
+  const comment = String(entry.comment || '').trim();
+  if (comment) return comment;
+  if (Array.isArray(entry.key)) {
+    const firstKey = entry.key.find((value) => String(value || '').trim());
+    if (firstKey !== undefined) return String(firstKey).trim();
+  }
+  const keys = String(entry.keys || '').trim();
+  if (keys) return keys.split(',')[0].trim();
+  return String(entry.uid ?? '');
+}
+
+// 把 ST 引擎给出的激活条目按「注入前 / 注入后 / 其他位置」组装成文本块：
+// 组装方式与酒馆一致（同一位置内按激活顺序 unshift，使低 order 条目在前），
+// 排除名单在此处生效；before 进开头块、after 进结尾块，AN / 深度 / 示例 / 出口
+// 等位置在档案分析提示词里没有对应槽位，统一进 <World_Info_Extra> 补充块——
+// 它们仍是酒馆规则触发的世界书背景（用户世界书大量用 AN 位置放角色描述），
+// 只跳过内容为空的条目。
+function buildPositionedWorldInfoBlocks(result, excludedKeys) {
+  const before = [];
+  const after = [];
+  const extra = [];
+  const included = [];
+  const excluded = [];
+  const skipped = [];
+  const activation = result?.worldInfoActivation;
+  const entries = Array.isArray(activation?.entries) ? activation.entries : [];
+  for (const entry of entries) {
+    const content = String(entry?.content || '').trim();
+    if (!content) {
+      skipped.push(entry);
+      continue;
+    }
+    if (isWorldInfoEntryExcluded(excludedKeys, entry)) {
+      excluded.push(entry);
+      continue;
+    }
+    const position = normalizeWorldInfoPosition(entry?.position);
+    if (position === 'before') before.unshift(content);
+    else if (position === 'after') after.unshift(content);
+    else extra.unshift(content);
+    included.push(entry);
+  }
+  return {
+    before: before.length > 0 ? before.join('\n') : '',
+    after: after.length > 0 ? after.join('\n') : '',
+    extra: extra.length > 0 ? extra.join('\n') : '',
+    included,
+    excluded,
+    skipped,
+  };
+}
+
+const NO_WORLD_INFO = Object.freeze({
+  mode: 'none',
+  before: '',
+  after: '',
+  extra: '',
+  counts: Object.freeze({ included: 0, excluded: 0, skipped: 0 }),
+  names: Object.freeze({ included: [], excluded: [], skipped: [] }),
+});
+
+// 档案分析用的世界书解析：返回 { mode, before, after, counts }。
+// mode = 'entries'（按条目过滤，排除生效）| 'strings'（酒馆原文整体注入）| 'none'。
+// 日志用的条目标签：显示名优先，兜底 书名#uid。
+function worldInfoEntryLabel(entry) {
+  const displayName = String(entry?.displayName || '').trim();
+  if (displayName) return displayName;
+  return `${String(entry?.world || '').trim()}#${String(entry?.uid ?? '').trim()}`;
+}
+
+async function resolveWorldInfoForAnalysis() {
+  const ctx = getContextSafe();
+  if (!ctx || typeof ctx.getWorldInfoPrompt !== 'function') return NO_WORLD_INFO;
+  const result = await getStWorldInfoActivation(ctx);
+  if (!result) return NO_WORLD_INFO;
+  const activation = result.worldInfoActivation;
+  if (Array.isArray(activation?.entries)) {
+    const excludedKeys = getWorldInfoExcludedKeys(getSettings(ctx));
+    const blocks = buildPositionedWorldInfoBlocks(result, excludedKeys);
+    return {
+      mode: 'entries',
+      before: blocks.before,
+      after: blocks.after,
+      extra: blocks.extra,
+      counts: { included: blocks.included.length, excluded: blocks.excluded.length, skipped: blocks.skipped.length },
+      names: {
+        included: blocks.included.map(worldInfoEntryLabel),
+        excluded: blocks.excluded.map(worldInfoEntryLabel),
+        skipped: blocks.skipped.map(worldInfoEntryLabel),
+      },
+    };
+  }
+  // 宿主未提供条目级激活数据：原样注入酒馆拼好的文本（无法按条目排除）。
+  return {
+    mode: 'strings',
+    before: String(result.worldInfoBefore || '').trim(),
+    after: String(result.worldInfoAfter || '').trim(),
+    extra: '',
+    counts: { included: 0, excluded: 0, skipped: 0 },
+    names: { included: [], excluded: [], skipped: [] },
+  };
+}
+
+// 世界书视图：收集「当前激活的书」名单。
+// 来源：本次激活结果（必然激活）+ 角色主世界书 + /getcharbook 兜底 +
+// 聊天绑定书 + 人设书 + 全局书多选框（#world_info）。
+async function getActiveWorldBookNames(ctx, result) {
+  const names = new Set();
+  const push = (value) => {
+    const name = String(value || '').trim();
+    if (name) names.add(name);
+  };
+  const activation = result?.worldInfoActivation;
+  if (Array.isArray(activation?.entries)) {
+    for (const entry of activation.entries) push(entry?.world);
+  }
+  const character = Array.isArray(ctx?.characters) && Number.isInteger(ctx?.characterId) ? ctx.characters[ctx.characterId] : null;
+  push(character?.data?.extensions?.world);
+  if (typeof globalThis.STscript === 'function') {
+    try {
+      const pipe = await globalThis.STscript('/getcharbook');
+      push(pipe?.pipe ?? pipe);
+    } catch (error) {
+      console.warn(`[${MODULE_NAME}] /getcharbook failed`, error);
+    }
+  }
+  push(ctx?.chatMetadata?.world_info);
+  push(ctx?.powerUserSettings?.persona_description_lorebook);
+  try {
+    const select = document.getElementById('world_info');
+    if (select?.selectedOptions) {
+      for (const option of select.selectedOptions) push(option.textContent || option.label || option.value);
+    }
+  } catch {}
+  return names;
+}
+
+async function loadWorldBookEntries(ctx, bookName) {
+  const name = String(bookName || '').trim();
+  if (!name || typeof ctx?.loadWorldInfo !== 'function') return [];
+  try {
+    const book = await ctx.loadWorldInfo(name);
+    const entries = book?.entries;
+    if (!entries || typeof entries !== 'object') return [];
+    const list = Array.isArray(entries) ? entries : Object.values(entries);
+    const loaded = [];
+    for (const entry of list) {
+      if (!entry || typeof entry !== 'object') continue;
+      loaded.push({
+        world: name,
+        uid: entry.uid,
+        displayName: getWorldInfoEntryDisplayName(entry),
+        constant: entry.constant === true,
+        disabled: entry.disable === true,
+        position: normalizeWorldInfoPosition(entry.position),
+        content: String(entry.content || '').trim(),
+      });
+    }
+    return loaded;
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] loadWorldInfo "${name}" failed`, error);
+    return [];
+  }
+}
+
+function getWorldBookModeText(mode) {
+  switch (mode) {
+    case 'entries': return '激活引擎正常';
+    case 'strings': return '酒馆规则生效';
+    case 'none': return '世界书引擎不可用';
+    default: return '未知状态';
+  }
+}
+
+function refreshHomeWorldBookStatus() {
+  const status = document.getElementById(HOME_WORLDBOOK_STATUS_ID);
+  if (!status) return;
+  try {
+    const ctx = getContextSafe();
+    const settings = ctx ? getSettings(ctx) : null;
+    const excludedCount = settings && settings.worldInfo?.excluded
+      ? Object.values(settings.worldInfo.excluded).reduce((sum, uids) => sum + (Array.isArray(uids) ? uids.length : 0), 0)
+      : 0;
+    const engineOk = Boolean(ctx && typeof ctx.getWorldInfoPrompt === 'function');
+    if (!engineOk) {
+      status.textContent = '引擎不可用';
+      status.dataset.state = 'error';
+    } else if (excludedCount > 0) {
+      status.textContent = `已排除 ${excludedCount} 条`;
+      status.dataset.state = 'ok';
+    } else {
+      status.textContent = '跟随酒馆规则';
+      status.dataset.state = 'idle';
+    }
+  } catch (error) {
+    status.textContent = '跟随酒馆规则';
+    status.dataset.state = 'idle';
+  }
+}
+
+function toggleWorldBookEntryExclusion(bookName, uid, excluded) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const settings = getSettings(ctx);
+  const bookKey = String(bookName || '').trim();
+  const uidKey = String(uid ?? '').trim();
+  if (!bookKey || !uidKey) return;
+  const excludedMap = settings.worldInfo.excluded;
+  const uids = new Set(Array.isArray(excludedMap[bookKey]) ? excludedMap[bookKey] : []);
+  if (excluded) uids.add(uidKey);
+  else uids.delete(uidKey);
+  if (uids.size > 0) excludedMap[bookKey] = Array.from(uids);
+  else delete excludedMap[bookKey];
+  saveSettings(ctx);
+  refreshHomeWorldBookStatus();
+  renderWorldBookList();
+}
+
+function clearWorldBookExclusions() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const settings = getSettings(ctx);
+  settings.worldInfo.excluded = {};
+  saveSettings(ctx);
+  refreshHomeWorldBookStatus();
+  renderWorldBookList();
+}
+
+function buildWorldBookBadge(text, className) {
+  const badge = document.createElement('span');
+  badge.className = `soullink-worldbook__badge ${className}`;
+  badge.textContent = text;
+  return badge;
+}
+
+// 渲染序号：排除勾选/刷新会触发多次并发 render，只允许最新一次写 DOM，
+// 避免交错渲染导致列表重复。
+let worldBookRenderSeq = 0;
+
+// 每本书的搜索词：渲染会整体重建 DOM，搜索词单独保存，排除勾选/刷新后不丢。
+const worldBookSearchQueries = new Map();
+
+// 条目显示排序：常驻 → 本次触发 → 未触发（可触发）→ 禁用（根本不会被激活）。
+// 与酒馆编辑器的 priority 排序（常驻→普通→禁用）一致，普通档内再按「本次触发」优先；
+// 禁用条目即使标了常驻也排最后——酒馆扫描时 disable 检查先于 constant，禁用条目永远不会激活。
+function getWorldBookEntryRank(entry, triggered) {
+  if (entry.disabled) return 3;
+  if (entry.constant) return 0;
+  if (triggered) return 1;
+  return 2;
+}
+
+// 在书区块内按条目名称过滤行：只隐藏 DOM，不重跑酒馆引擎，也不丢搜索框焦点。
+function applyWorldBookSearch(section, query) {
+  const q = String(query || '').trim().toLowerCase();
+  const rows = section.querySelectorAll('.soullink-worldbook__entry');
+  const count = section.querySelector('.soullink-worldbook__book-count');
+  let matched = 0;
+  for (const row of rows) {
+    const hit = !q || String(row.dataset.search || '').includes(q);
+    row.hidden = !hit;
+    if (hit) matched += 1;
+  }
+  if (count && rows.length > 0) {
+    count.textContent = q ? `${matched} / ${rows.length} 条` : `${rows.length} 条`;
+  }
+}
+
+async function renderWorldBookList() {
+  const seq = ++worldBookRenderSeq;
+  const list = document.getElementById(WORLDBOOK_LIST_ID);
+  if (!list) return;
+  const status = document.getElementById(WORLDBOOK_STATUS_ID);
+  const chatNode = document.getElementById(WORLDBOOK_CHAT_ID);
+  const banner = document.getElementById(WORLDBOOK_BANNER_ID);
+  const clearButton = document.getElementById(WORLDBOOK_CLEAR_ID);
+  const ctx = getContextSafe();
+  if (!ctx) {
+    if (status) {
+      status.textContent = '宿主上下文不可用';
+      status.dataset.state = 'error';
+    }
+    list.textContent = '';
+    return;
+  }
+  if (chatNode) chatNode.textContent = `当前聊天：${getCurrentChatLabel(ctx)}`;
+  if (status) {
+    status.textContent = '读取中…';
+    status.dataset.state = 'busy';
+  }
+  const settings = getSettings(ctx);
+  const result = await getStWorldInfoActivation(ctx);
+  if (seq !== worldBookRenderSeq) return;
+  const mode = !result ? 'none' : (Array.isArray(result?.worldInfoActivation?.entries) ? 'entries' : 'strings');
+  const excludedKeys = getWorldInfoExcludedKeys(settings);
+  const triggeredKeys = new Set();
+  if (mode === 'entries') {
+    for (const entry of result.worldInfoActivation.entries) {
+      triggeredKeys.add(worldInfoEntryKey(entry?.world, entry?.uid));
+    }
+  }
+  const bookNames = await getActiveWorldBookNames(ctx, result);
+  if (seq !== worldBookRenderSeq) return;
+  const excludedTotal = excludedKeys.size;
+  if (status) {
+    status.textContent = `${getWorldBookModeText(mode)} · ${bookNames.size} 本书 · ${excludedTotal} 条排除`;
+    status.dataset.state = mode === 'none' ? 'error' : (excludedTotal > 0 ? 'ok' : 'idle');
+  }
+  if (clearButton) clearButton.hidden = excludedTotal === 0;
+  if (banner) {
+    if (mode === 'strings') {
+      banner.hidden = false;
+      banner.textContent = '当前宿主未提供条目级激活数据：世界书将按 SillyTavern 原文整体注入（无法按条目排除），下方列表仅供查看。';
+    } else if (mode === 'none') {
+      banner.hidden = false;
+      banner.textContent = (typeof ctx.getWorldInfoPrompt === 'function')
+        ? '世界书引擎调用失败（见后台日志）：本次档案分析不会注入世界书内容。'
+        : '宿主未提供世界书引擎（getWorldInfoPrompt）：本次档案分析不会注入世界书内容。';
+    } else {
+      banner.hidden = true;
+      banner.textContent = '';
+    }
+  }
+  list.textContent = '';
+  if (bookNames.size === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'soullink-worldbook__empty';
+    empty.textContent = mode === 'none'
+      ? '当前没有可读取的世界书。'
+      : '当前聊天没有激活任何世界书（角色 / 全局 / 聊天均未绑定）。';
+    list.appendChild(empty);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const bookName of Array.from(bookNames).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))) {
+    const entries = await loadWorldBookEntries(ctx, bookName);
+    if (seq !== worldBookRenderSeq) return;
+    const section = document.createElement('div');
+    section.className = 'soullink-worldbook__book';
+    const head = document.createElement('div');
+    head.className = 'soullink-worldbook__book-head';
+    const title = document.createElement('span');
+    title.className = 'soullink-worldbook__book-name';
+    title.textContent = bookName;
+    const count = document.createElement('span');
+    count.className = 'soullink-worldbook__book-count';
+    count.textContent = `${entries.length} 条`;
+    head.append(title, count);
+    section.appendChild(head);
+    if (entries.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'soullink-worldbook__book-empty';
+      empty.textContent = '（无法读取该书的条目）';
+      section.appendChild(empty);
+      fragment.appendChild(section);
+      continue;
+    }
+    entries.sort((a, b) => {
+      const rankA = getWorldBookEntryRank(a, triggeredKeys.has(worldInfoEntryKey(a.world, a.uid)));
+      const rankB = getWorldBookEntryRank(b, triggeredKeys.has(worldInfoEntryKey(b.world, b.uid)));
+      return rankA - rankB;
+    });
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'soullink-worldbook__search';
+    searchInput.placeholder = '搜索条目名称…';
+    searchInput.value = worldBookSearchQueries.get(bookName) || '';
+    searchInput.addEventListener('input', () => {
+      const query = searchInput.value;
+      if (query) worldBookSearchQueries.set(bookName, query);
+      else worldBookSearchQueries.delete(bookName);
+      applyWorldBookSearch(section, query);
+    });
+    section.appendChild(searchInput);
+    for (const entry of entries) {
+      const key = worldInfoEntryKey(entry.world, entry.uid);
+      const excluded = excludedKeys.has(key);
+      const triggered = triggeredKeys.has(key);
+      const row = document.createElement('label');
+      row.className = 'soullink-worldbook__entry';
+      row.dataset.search = String(entry.displayName || `条目 ${entry.uid}`).toLowerCase();
+      if (excluded) row.classList.add('is-excluded');
+      if (triggered) row.classList.add('is-triggered');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = excluded;
+      checkbox.disabled = mode !== 'entries';
+      checkbox.title = mode === 'entries'
+        ? '排除后，该条目即使被 SillyTavern 触发也不会注入档案分析提示词'
+        : '当前宿主不支持按条目排除';
+      checkbox.addEventListener('change', () => {
+        toggleWorldBookEntryExclusion(entry.world, entry.uid, checkbox.checked);
+      });
+      const textWrap = document.createElement('span');
+      textWrap.className = 'soullink-worldbook__entry-main';
+      const name = document.createElement('span');
+      name.className = 'soullink-worldbook__entry-name';
+      name.textContent = entry.displayName || `条目 ${entry.uid}`;
+      name.title = entry.content || entry.displayName || '';
+      const badges = document.createElement('span');
+      badges.className = 'soullink-worldbook__entry-badges';
+      if (entry.constant) badges.appendChild(buildWorldBookBadge('常驻', 'is-constant'));
+      if (entry.disabled) badges.appendChild(buildWorldBookBadge('禁用', 'is-disabled'));
+      badges.appendChild(buildWorldBookBadge(getWorldInfoPositionLabel(entry.position), 'is-position'));
+      if (triggered) badges.appendChild(buildWorldBookBadge('本次触发', 'is-triggered'));
+      if (excluded) badges.appendChild(buildWorldBookBadge('已排除', 'is-excluded'));
+      textWrap.append(name, badges);
+      row.append(checkbox, textWrap);
+      section.appendChild(row);
+    }
+    applyWorldBookSearch(section, worldBookSearchQueries.get(bookName) || '');
+    fragment.appendChild(section);
+  }
+  // 清理已不在当前激活列表里的书的搜索词。
+  for (const key of Array.from(worldBookSearchQueries.keys())) {
+    if (!bookNames.has(key)) worldBookSearchQueries.delete(key);
+  }
+  list.appendChild(fragment);
+}
+
+function initWorldBookSection(panel) {
+  if (!panel || panel.dataset.worldbookReady === 'true') return;
+  document.getElementById(WORLDBOOK_REFRESH_ID)?.addEventListener('click', renderWorldBookList);
+  document.getElementById(WORLDBOOK_CLEAR_ID)?.addEventListener('click', clearWorldBookExclusions);
+  refreshHomeWorldBookStatus();
+  panel.dataset.worldbookReady = 'true';
+  logApp('info', '世界书系统已就绪');
+}
+
 
 function serializeArchiveForPrompt(archive) {
   const fields = {};
@@ -2505,20 +3554,57 @@ function serializeArchiveForPrompt(archive) {
   return profile;
 }
 
-function buildArchiveAnalysisMessages(name, archive, prompt) {
+// 档案分析请求体（v0.8.4 起）按「提示词 → 剧情 → 世界书 → 输入」四段式组织：
+// 1. system 档案系统提示词；
+// 2. user 剧情段：引导消息 + <Recent_Messages> 块（最近几条消息，XML 包裹）；
+// 3. user 世界书段：引导消息 + <World_Info_Before>/<World_Info_Extra>/<World_Info_After> 块（有则发）；
+// 4. user 输入段：JSON（character / current_profile / turn_index，剧情与世界书已独立成节，不再重复携带）。
+async function buildArchiveAnalysisMessages(name, archive, prompt) {
   const recentMessages = getRecentMessages(ARCHIVE_RECENT_MESSAGE_COUNT);
   const payload = {
     character: name,
     current_profile: serializeArchiveForPrompt(archive),
-    recent_messages: recentMessages,
-    world_info_background: buildWorldInfoText(recentMessages),
     turn_index: (getContextSafe()?.chat?.length) || 0,
   };
-  const userContent = `请依据约定输出 JSON，输入如下：\n\n${JSON.stringify(payload, null, 2)}`;
-  return [
+  // 世界书按酒馆规则的触发结果，注入在分析提示词的「合适位置」：
+  // before 块放最前、after 块放最后（与酒馆 worldInfoBefore/After 的语义一致）。
+  const worldInfo = await resolveWorldInfoForAnalysis();
+  const worldBlocks = [];
+  if (worldInfo.before) worldBlocks.push(`<World_Info_Before>\n${worldInfo.before}\n</World_Info_Before>`);
+  if (worldInfo.extra) worldBlocks.push(`<World_Info_Extra>\n${worldInfo.extra}\n</World_Info_Extra>`);
+  if (worldInfo.after) worldBlocks.push(`<World_Info_After>\n${worldInfo.after}\n</World_Info_After>`);
+  const messages = [
     { role: 'system', content: prompt },
-    { role: 'user', content: userContent },
+    {
+      role: 'user',
+      content: [
+        `以下是最新的剧情（最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条消息），可能包含该角色不在场的段落。`,
+        '请先判断该角色本轮是否在场、真实获知或亲历了什么，再据此更新人物档案',
+        '（标量字段、性格、世界观、家庭背景、人际关系与记忆）；该角色不在场的内容只作背景，不得写入其档案。',
+        '',
+        `<Recent_Messages>\n${JSON.stringify(recentMessages, null, 2)}\n</Recent_Messages>`,
+      ].join('\n'),
+    },
+    ...(worldBlocks.length > 0 ? [{
+      role: 'user',
+      content: [
+        '以下是世界书注入内容，包含人物档案与世界背景信息，仅供了解世界观设定，不代表该角色亲历或已知；',
+        '请据此合理推断设定，但只有该角色确实获知的内容才能写入其档案。',
+        '',
+        worldBlocks.join('\n\n'),
+      ].join('\n'),
+    }] : []),
+    {
+      role: 'user',
+      content: `请依据约定输出 JSON，输入如下：\n\n${JSON.stringify(payload, null, 2)}`,
+    },
   ];
+  if (worldBlocks.length === 0) {
+    logApp('warn', '世界书未注入内容', worldInfo.mode, worldInfo.counts, worldInfo.names);
+  } else {
+    logApp('info', '世界书注入', worldInfo.mode, worldInfo.counts, worldInfo.names);
+  }
+  return messages;
 }
 
 // TauriTavern 宿主代理的对话接口是 /api/backends/chat-completions/generate，
@@ -2730,7 +3816,7 @@ async function analyzeCharacter(name) {
   renderAnalyzeAllButton();
   logApp('info', '开始分析角色档案', name);
   try {
-    const messages = buildArchiveAnalysisMessages(name, archive, prompt);
+    const messages = await buildArchiveAnalysisMessages(name, archive, prompt);
     const content = await chatCompletion(settings, messages, { signal: controller.signal });
     const diff = parseAgentJson(content);
     const changes = applyArchiveDiff(archive, diff);
