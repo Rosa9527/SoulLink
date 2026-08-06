@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.0.1';
+const MODULE_VERSION = '1.0.2';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
@@ -164,6 +164,10 @@ const NETWORK_NOISE_PATTERNS = Object.freeze([
 ]);
 const LOG_FULL_BODY_MAX = 5;
 const CHAT_COMPLETION_TIMEOUT_MS = 60000;
+// 对话请求自动重试：上游（如 api.deepseek.com）在并发压力下会瞬态返回
+// 「200 + 无内容 JSON」或 429/5xx，重试可自愈；非瞬态错误（401/400 等）不重试。
+const CHAT_COMPLETION_MAX_ATTEMPTS = 3;
+const CHAT_COMPLETION_RETRY_DELAY_MS = 600;
 const ARCHIVE_RECENT_MESSAGE_COUNT = 4;
 // 消息正则过滤：档案分析 / 档案预筛 / 角色扮演预筛 / 角色推演这四种调用都会把
 // 最近的几条消息作为上下文，先按启用的正则把每条消息内容中匹配的部分剔除，
@@ -712,6 +716,30 @@ function shouldFallbackFromHostProxy(responseText, status) {
 function looksLikeJson(text) {
   const trimmed = String(text || '').trim();
   return trimmed.startsWith('{') || trimmed.startsWith('[');
+}
+
+// 检查响应文本里是否真的带有可用文本：上游（如 DeepSeek）在并发压力下会返回
+// 「200 + choices 为空 / content 为空的 JSON」——能解析但等于没回复，需要走直连与
+// 自动重试而不是直接判死；错误信封（{error}）不算缺内容，交给上游错误分支处理。
+function responseContainsUsableText(responseText) {
+  const trimmed = String(responseText || '').trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
+  let data;
+  try {
+    data = JSON.parse(trimmed);
+  } catch {
+    return false;
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  if (data.error) return true;
+  if (data.response != null && data.choices == null) {
+    try {
+      const nested = typeof data.response === 'string' ? JSON.parse(data.response) : data.response;
+      if (nested && typeof nested === 'object') data = nested;
+    } catch {}
+  }
+  const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text;
+  return typeof content === 'string' && Boolean(content.trim());
 }
 
 async function fetchText(url, options = {}) {
@@ -2533,11 +2561,16 @@ async function describeFetchRequest(args) {
 async function readResponseBodyForLog(response, url) {
   try {
     const cappedClone = response.clone();
-    const capped = await readStreamText(cappedClone.body, LOG_RESPONSE_BODY_CAP);
+    let capped = '';
     let full = '';
+    // 对话接口的响应体直接从同一个 clone 完整读完（再截断出展示文本），
+    // 避免二次 clone 在 fetchText 已消费原始响应体后抛错、把已读到的内容一起丢掉
+    // （旧实现因此把有内容的响应也记成「(空)」，误导排查）。
     if (isChatCompletionUrl(url)) {
-      const fullClone = response.clone();
-      full = redactSensitive(await readStreamFully(fullClone.body));
+      full = redactSensitive(await readStreamFully(cappedClone.body));
+      capped = full.length > LOG_RESPONSE_BODY_CAP ? `${full.slice(0, LOG_RESPONSE_BODY_CAP)}…(截断)` : full;
+    } else {
+      capped = await readStreamText(cappedClone.body, LOG_RESPONSE_BODY_CAP);
     }
     return { capped, full };
   } catch {
@@ -4974,34 +5007,49 @@ function createCancelError() {
   return error;
 }
 
-async function chatCompletion(settings, messages, options = {}) {
-  const apiBase = getApiBase(settings);
-  if (!apiBase) throw new Error('请先在「API 连接」中配置 Base URL');
-  const model = String(settings?.model || '').trim();
-  if (!model) throw new Error('请先在「API 连接」中选择模型');
+function createChatError(message, retryable = false) {
+  const error = new Error(message);
+  error.retryable = retryable;
+  return error;
+}
+
+// 带取消感知的等待：分析中途点「取消」时能立即中断重试间隙。
+async function sleepAbortable(ms, signal) {
+  if (signal?.aborted) throw createCancelError();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createCancelError());
+    };
+    const timer = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+// 单次对话请求：跨域走宿主代理，代理明显损坏（非 2xx / 非 JSON / 无内容 JSON /
+// 401/403/404/405 / 路由不存在）时回退直连；返回 { content, transport }。
+// 上游瞬态故障（空内容、429、5xx、busy 类错误信封）以 retryable 标记抛出，
+// 由 chatCompletion 的外层循环自动重试。
+async function requestChatCompletionOnce(apiBase, settings, body, signal) {
   const url = `${apiBase}/chat/completions`;
-  const body = {
-    model,
-    messages,
-    stream: false,
-    temperature: Number.isFinite(options.temperature) ? options.temperature : 0.2,
-  };
   const useHostProxy = isCrossOriginUrl(url);
   let response = null;
   let responseText = '';
   let transport = useHostProxy ? 'host-proxy' : 'direct';
-  logApp('debug', '发送 AI 对话请求', `${model} · ${transport}`);
   try {
     if (useHostProxy) {
       let proxyError = null;
       try {
-        ({ response, responseText } = await requestHostProxyChatCompletion(apiBase, settings, body, options.signal));
+        ({ response, responseText } = await requestHostProxyChatCompletion(apiBase, settings, body, signal));
       } catch (error) {
-        if (options.signal?.aborted) throw createCancelError();
+        if (signal?.aborted) throw createCancelError();
         proxyError = error;
         console.warn(`[${MODULE_NAME}] host proxy chat completion failed, trying direct`, error);
       }
-      const proxyLooksBroken = !response?.ok || !looksLikeJson(responseText);
+      const proxyLooksBroken = !response?.ok || !looksLikeJson(responseText) || !responseContainsUsableText(responseText);
       if (proxyError || proxyLooksBroken || shouldFallbackFromHostProxy(responseText, response?.status)) {
         transport = 'direct-after-proxy-fallback';
         ({ response, responseText } = await fetchText(url, {
@@ -5009,7 +5057,7 @@ async function chatCompletion(settings, messages, options = {}) {
           headers: getAuthHeaders(settings),
           body: JSON.stringify(body),
           timeoutMs: CHAT_COMPLETION_TIMEOUT_MS,
-          signal: options.signal,
+          signal,
         }));
       }
     } else {
@@ -5018,27 +5066,29 @@ async function chatCompletion(settings, messages, options = {}) {
         headers: getAuthHeaders(settings),
         body: JSON.stringify(body),
         timeoutMs: CHAT_COMPLETION_TIMEOUT_MS,
-        signal: options.signal,
+        signal,
       }));
     }
   } catch (error) {
-    if (options.signal?.aborted) throw createCancelError();
-    throw new Error(`对话请求失败（${transport}）。请检查 API 配置。原始错误: ${String(error?.message || error)}`);
+    if (signal?.aborted) throw createCancelError();
+    throw createChatError(`对话请求失败（${transport}）。请检查 API 配置。原始错误: ${String(error?.message || error)}`);
   }
   if (!response?.ok) {
-    throw new Error(`对话请求失败 ${response?.status}（${transport}）: ${String(responseText || '').slice(0, 240)}`);
+    const transient = response?.status === 429 || (response?.status >= 500 && response?.status < 600);
+    throw createChatError(`对话请求失败 ${response?.status}（${transport}）: ${String(responseText || '').slice(0, 240)}`, transient);
   }
   let data;
   try {
     data = JSON.parse(responseText);
   } catch {
-    throw new Error(`对话响应不是 JSON（${transport}）: ${String(responseText || '').slice(0, 180)}`);
+    throw createChatError(`对话响应不是 JSON（${transport}）: ${String(responseText || '').slice(0, 180)}`);
   }
   if (data && typeof data === 'object' && data.error) {
     const errorMessage = typeof data.error === 'string'
       ? data.error
       : (data.error.message || JSON.stringify(data.error));
-    throw new Error(`上游 API 返回错误（${transport}）: ${String(errorMessage).slice(0, 240)}`);
+    const transient = /(?:429|5\d\d|overload|busy|try again|temporarily|rate\s*limit|too\s*many)/i.test(String(errorMessage));
+    throw createChatError(`上游 API 返回错误（${transport}）: ${String(errorMessage).slice(0, 240)}`, transient);
   }
   if (data && typeof data === 'object' && data.response != null && data.choices == null) {
     try {
@@ -5049,10 +5099,52 @@ async function chatCompletion(settings, messages, options = {}) {
   const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text;
   if (typeof content !== 'string' || !content.trim()) {
     const errorMessage = data?.error?.message ? `: ${data.error.message}` : '';
-    throw new Error(`AI 未返回文本内容（${transport}）${errorMessage}`);
+    throw createChatError(`AI 未返回文本内容（${transport}）${errorMessage}`, true);
   }
-  logApp('debug', 'AI 对话响应已接收', `${model} · ${transport}`);
-  return content;
+  return { content, transport };
+}
+
+async function chatCompletion(settings, messages, options = {}) {
+  const apiBase = getApiBase(settings);
+  if (!apiBase) throw new Error('请先在「API 连接」中配置 Base URL');
+  const model = String(settings?.model || '').trim();
+  if (!model) throw new Error('请先在「API 连接」中选择模型');
+  const body = {
+    model,
+    messages,
+    stream: false,
+    temperature: Number.isFinite(options.temperature) ? options.temperature : 0.2,
+  };
+  const maxAttempts = Math.max(1, Math.min(5, Number(options.maxAttempts) > 0 ? Number(options.maxAttempts) : CHAT_COMPLETION_MAX_ATTEMPTS));
+  logApp('debug', '发送 AI 对话请求', `${model} · ${isCrossOriginUrl(`${apiBase}/chat/completions`) ? 'host-proxy' : 'direct'}`);
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (options.signal?.aborted) throw createCancelError();
+    try {
+      const { content, transport } = await requestChatCompletionOnce(apiBase, settings, body, options.signal);
+      if (attempt > 1) {
+        logApp('info', 'AI 对话请求重试成功', `${model} · ${transport} · 第 ${attempt}/${maxAttempts} 次`);
+      } else {
+        logApp('debug', 'AI 对话响应已接收', `${model} · ${transport}`);
+      }
+      return content;
+    } catch (error) {
+      if (options.signal?.aborted) throw createCancelError();
+      lastError = error;
+      const retryable = error?.retryable === true;
+      if (retryable && attempt < maxAttempts) {
+        const delayMs = CHAT_COMPLETION_RETRY_DELAY_MS * attempt;
+        logApp('warn', 'AI 对话请求异常，稍后自动重试', `${model} · 第 ${attempt}/${maxAttempts} 次 · ${String(error.message || error).slice(0, 140)}`);
+        await sleepAbortable(delayMs, options.signal);
+        continue;
+      }
+      if (retryable && attempt > 1) {
+        throw createChatError(`${String(error.message || error)}（已自动重试 ${attempt - 1} 次）`, true);
+      }
+      throw error;
+    }
+  }
+  throw lastError || new Error('AI 对话请求失败');
 }
 
 function parseAgentJson(text) {

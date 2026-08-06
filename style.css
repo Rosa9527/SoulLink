@@ -5,7 +5,7 @@
    ========================================================= */
 
 .soullink-sphere,
-.soullink-panel__dialog {
+.soullink-panel {
   --sl-ink: #3d2b1f;
   --sl-ink-soft: rgba(61, 43, 31, 0.45);
   --sl-paper: #fdf6e3;
