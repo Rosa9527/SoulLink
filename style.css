@@ -1307,6 +1307,19 @@ select.soullink-input {
   font-size: 12.5px;
 }
 
+.soullink-archive__auto-toggle {
+  flex: none;
+  min-width: 128px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+
+.soullink-archive__auto-toggle.is-active {
+  color: #fff;
+  background: rgba(76, 122, 92, 0.85);
+  border-color: rgba(76, 122, 92, 0.9);
+}
+
 .soullink-archive__card {
   display: flex;
   flex-direction: column;

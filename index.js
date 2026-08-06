@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.8.7';
+const MODULE_VERSION = '0.8.9';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -61,6 +61,7 @@ const REGISTER_LIST_ID = 'soullink-register-list';
 const REGISTER_STATUS_ID = 'soullink-register-status';
 const REGISTER_CHAT_ID = 'soullink-register-chat';
 const ARCHIVE_ANALYZE_ALL_ID = 'soullink-archive-analyze-all';
+const AUTO_ARCHIVE_TOGGLE_ID = 'soullink-archive-auto-toggle';
 const ARCHIVE_LIST_ID = 'soullink-archive-list';
 const ARCHIVE_STATUS_ID = 'soullink-archive-status';
 const ARCHIVE_CHAT_ID = 'soullink-archive-chat';
@@ -100,9 +101,30 @@ const LOG_SEARCH_DEBOUNCE_MS = 120;
 const LOG_DETAIL_CAP = 20000;
 const LOG_REQUEST_BODY_CAP = 6000;
 const LOG_RESPONSE_BODY_CAP = 20000;
-const CONSOLE_NOISE_PREFIXES = Object.freeze([
+// 噪音过滤名单：console 噪音按消息前缀（debug/info 级别），network 噪音按 URL 模式。
+// 只过滤 Tavern 内部刷屏（正则跳过 / 事件总线 / 世界书概率 / 元数据保存 / 非模型 IPC），
+// warn/error、SoulLink 自身日志与模型 API 调用永不误伤。
+const LOG_NOISE_PREFIXES = Object.freeze([
   '[WI]',
   '[Prompt Template]',
+  'getRegexedString: Skipping script',
+  'Event emitted: ',
+  'WI entry ',
+  'Chat Completions: saving token cache',
+  'Saving metadata',
+  'Saved metadata',
+  'Debounced metadata save cancelled',
+  '---calling setPromptString',
+  'calling runGenerate',
+  'generating prompt',
+  'Auto-continue is disabled by user.',
+  'Skipping extension interceptors for dry run',
+  'Core/all messages:',
+  'skipWIAN not active',
+]);
+const NETWORK_NOISE_PATTERNS = Object.freeze([
+  /ipc\.localhost/,
+  /\/api\/chats\//,
 ]);
 const LOG_FULL_BODY_MAX = 5;
 const CHAT_COMPLETION_TIMEOUT_MS = 60000;
@@ -150,6 +172,7 @@ const ESC_KEY_HANDLER_KEY = '__soullink_esc_key_handler__';
 const LOG_CAPTURE_KEY = '__soullink_log_capture__';
 const LOG_EVENT_LOG_KEY = '__soullink_log_event_handler__';
 const NETWORK_CAPTURE_KEY = '__soullink_network_capture__';
+const AUTO_ARCHIVE_END_HANDLER_KEY = '__soullink_auto_archive_end_handler__';
 
 const DEFAULT_PROMPTS = Object.freeze({
   archiveSystem: `你是角色档案裁判，职责是根据「指定角色」在近期对话中的表现与获知，维护该角色的完整档案。
@@ -322,6 +345,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   logAutoScroll: true,
   logConsoleNoise: true,
   prompts: DEFAULT_PROMPTS,
+  autoArchiveEnabled: true,
   archives: {},
   worldInfo: { excluded: {} },
 });
@@ -1214,7 +1238,7 @@ function createPanel() {
               <button type="button" id="${LOG_COPY_ID}" class="soullink-log__action" title="复制全部日志为纯文本">📋 复制</button>
               <button type="button" id="${LOG_EXPORT_ID}" class="soullink-log__action" title="导出完整 JSON 日志文件">💾 导出</button>
               <button type="button" id="${LOG_FULL_BODY_EXPORT_ID}" class="soullink-log__action" title="导出最近 ${LOG_FULL_BODY_MAX} 次对话请求的完整请求体/响应体（未截断）">📦 完整请求体</button>
-              <button type="button" id="${LOG_NOISE_ID}" class="soullink-log__action is-active" title="过滤已知噪音（世界书扫描 [WI] / 宏变量 dump [Prompt Template]）">🔇 过滤噪音</button>
+              <button type="button" id="${LOG_NOISE_ID}" class="soullink-log__action is-active" title="过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用）">🔇 过滤噪音</button>
             </div>
             <div class="soullink-log__console">
               <div id="${LOG_LIST_ID}" class="soullink-log__list" role="log" aria-live="off" aria-label="运行日志"></div>
@@ -1263,10 +1287,11 @@ function createPanel() {
         </section>
         <section id="${ARCHIVE_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-archive">
-            <p class="soullink-archive__note">「🔮 分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话与世界书自动更新档案（可并发），「🔮 分析全部角色」一键更新名单里所有角色，也可「✏️ 编辑」手动修改。</p>
+            <p class="soullink-archive__note">「🔮 分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话与世界书自动更新档案（可并发），「🔮 分析全部角色」一键更新名单里所有角色，也可「✏️ 编辑」手动修改；开启「⚡ 自动维护」后，每轮 AI 回复生成结束会自动预筛并更新档案。</p>
             <div class="soullink-archive__toolbar">
               <span id="${ARCHIVE_STATUS_ID}" class="soullink-archive__count">0 个档案</span>
               <span id="${ARCHIVE_CHAT_ID}" class="soullink-archive__chat"></span>
+              <button type="button" id="${AUTO_ARCHIVE_TOGGLE_ID}" class="soullink-btn soullink-archive__auto-toggle" title="开启/关闭自动档案维护">⚡ 自动维护：开</button>
               <button type="button" id="${ARCHIVE_ANALYZE_ALL_ID}" class="soullink-btn soullink-archive__analyze-all">🔮 分析全部角色</button>
             </div>
             <div id="${ARCHIVE_LIST_ID}" class="soullink-archive__list"></div>
@@ -1551,9 +1576,14 @@ function pushLogEntry(level, source, args, detail) {
       message: redactSensitive(buildLogMessage(Array.isArray(args) ? args : [args])),
     };
     if (detail) entry.detail = redactSensitive(String(detail)).slice(0, LOG_DETAIL_CAP);
-    // 控制台噪音过滤（如 Tavern 世界书扫描 [WI]、宏变量全量 dump [Prompt Template]）
-    if (source === 'console' && safeLevel === 'debug' && logConsoleNoise) {
-      if (CONSOLE_NOISE_PREFIXES.some((prefix) => entry.message.startsWith(prefix))) return;
+    // 噪音过滤：Tavern 内部刷屏（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 元数据保存 / 非模型 IPC）。
+    // 注意：真实环境里 [WI] / [Prompt Template] 常以 info 级别输出，只过滤 debug 会漏网，故 debug+info 都过滤；
+    // warn/error 永不误伤。
+    if (logConsoleNoise) {
+      if (source === 'console' && (safeLevel === 'debug' || safeLevel === 'info')
+        && LOG_NOISE_PREFIXES.some((prefix) => entry.message.startsWith(prefix))) return;
+      if (source === 'network' && safeLevel === 'debug'
+        && NETWORK_NOISE_PATTERNS.some((pattern) => pattern.test(entry.message))) return;
     }
     // 连续重复折叠：同一级别/来源/内容紧挨着出现时，只更新最后一条的计数与时间
     const last = logEntries[logEntries.length - 1];
@@ -2113,7 +2143,7 @@ function initLogView(panel) {
   noiseToggle?.addEventListener('click', () => {
     logConsoleNoise = !logConsoleNoise;
     noiseToggle.classList.toggle('is-active', logConsoleNoise);
-    noiseToggle.title = logConsoleNoise ? '过滤已知噪音（世界书扫描 [WI] / 宏变量 dump [Prompt Template]）' : '不过滤控制台噪音';
+    noiseToggle.title = logConsoleNoise ? '过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用）' : '不过滤噪音（显示全部 console 与网络日志）';
     const ctx = getCtx();
     if (ctx) {
       getSettings(ctx).logConsoleNoise = logConsoleNoise;
@@ -2952,9 +2982,32 @@ async function analyzeAllCharacters() {
   renderAnalyzeAllButton();
 }
 
+function renderAutoArchiveToggle() {
+  const button = document.getElementById(AUTO_ARCHIVE_TOGGLE_ID);
+  if (!button) return;
+  const ctx = getContextSafe();
+  const enabled = ctx ? getSettings(ctx).autoArchiveEnabled !== false : true;
+  button.textContent = enabled ? '⚡ 自动维护：开' : '⚡ 自动维护：关';
+  button.classList.toggle('is-active', enabled);
+  button.title = enabled ? '点击关闭自动档案维护' : '点击开启自动档案维护';
+}
+
+function toggleAutoArchive() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const settings = getSettings(ctx);
+  settings.autoArchiveEnabled = !settings.autoArchiveEnabled;
+  saveSettingsImmediate(ctx);
+  renderAutoArchiveToggle();
+  logApp('info', settings.autoArchiveEnabled ? '自动档案维护已开启' : '自动档案维护已关闭');
+  globalThis.toastr?.info?.(`自动档案维护已${settings.autoArchiveEnabled ? '开启' : '关闭'}`, `[${MODULE_NAME}]`);
+}
+
 function initArchiveSection(panel) {
   if (!panel || panel.dataset.archiveReady === 'true') return;
   document.getElementById(ARCHIVE_ANALYZE_ALL_ID)?.addEventListener('click', analyzeAllCharacters);
+  document.getElementById(AUTO_ARCHIVE_TOGGLE_ID)?.addEventListener('click', toggleAutoArchive);
+  renderAutoArchiveToggle();
   renderAnalyzeAllButton();
   renderArchiveList();
   panel.dataset.archiveReady = 'true';
@@ -3896,6 +3949,165 @@ async function analyzeCharacter(name) {
   }
 }
 
+// ---------- 自动档案维护：Gate 预筛 + 并发分析 ----------
+// 触发时机：宿主每轮生成结束（generationEnded）且确实产出了新的 AI 回复。
+// Gate 输入刻意保持最小：只送「已注册角色名单 + 最近 4 条消息」，不送档案、世界书等
+// 其他上下文（与「档案预筛」提示词的输入说明一致）；Gate 只负责缩小名单，不产出内容。
+// 稳定性设计（参考 NPC Tracker 流程，但规避其已知缺陷）：
+// - 末条签名去重：同一末条被宿主反复触发（自动续写/事件重放）只处理一次；
+// - 运行锁：上一轮 Gate/分析还在飞时新事件直接跳过，杜绝并发 API 风暴；
+// - 中断检查：生成被用户中止时跳过，不对半截回复发起分析；
+// - 名单交集：Gate 返回的名字必须与已注册名单求交集，未知名字一律丢弃；
+// - 失败即跳过本轮：Gate 调用失败不降级、不重试轰炸，本轮视为已处理。
+const autoArchiveState = {
+  running: false,
+  lastSignature: '',
+};
+
+function buildAutoArchiveSignature(message) {
+  if (!message) return '';
+  return [
+    message.is_user ? 'user' : 'assistant',
+    String(message.name || ''),
+    String(message.mes || ''),
+  ].join('|');
+}
+
+// Gate 请求体：system 预筛提示词 + user 输入段（registered_characters + recent_messages）。
+// 与「档案预筛」默认提示词的输入说明保持一致，recent_messages 严格取最近 4 条；
+// 刻意不携带档案、世界书等任何其他上下文。
+function buildAutoArchiveGateMessages(names, prompt) {
+  const recentMessages = getRecentMessages(ARCHIVE_RECENT_MESSAGE_COUNT);
+  const payload = {
+    registered_characters: names,
+    recent_messages: recentMessages,
+  };
+  return [
+    { role: 'system', content: prompt },
+    {
+      role: 'user',
+      content: [
+        `以下是近期对话（最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条消息），可能包含各角色不在场的段落。`,
+        '请判断 registered_characters 中哪些角色的信息或记忆会发生变化，只输出约定 JSON。',
+        '',
+        `请依据约定输出 JSON，输入如下：\n\n${JSON.stringify(payload, null, 2)}`,
+      ].join('\n'),
+    },
+  ];
+}
+
+// 解析 Gate 返回名单，并与已注册名单求交集：模型可能返回乱格式、含未注册名或根本没返回
+// characters，这里统一归一化后只保留已注册名单中的角色名，杜绝未知名字混进后续分析。
+function parseGateCharacterNames(parsed, registeredNames) {
+  const allowed = new Set(registeredNames);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed.characters)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of parsed.characters) {
+    const name = String(item ?? '').trim();
+    if (!name || seen.has(name) || !allowed.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+async function runAutoArchiveGate(ctx, settings, names, signature) {
+  autoArchiveState.running = true;
+  // 先标记签名再跑：同一末条被宿主反复触发时直接走签名去重，不再重跑 Gate。
+  autoArchiveState.lastSignature = signature;
+  try {
+    const prompt = getPromptSavedText('archivePreScreen', ctx);
+    if (!prompt) {
+      logApp('warn', '自动档案维护跳过：未找到「档案预筛」提示词');
+      return;
+    }
+    const messages = buildAutoArchiveGateMessages(names, prompt);
+    logApp('info', '自动档案维护：预筛开始', `${names.length} 个已注册角色`);
+    const content = await chatCompletion(settings, messages);
+    const parsed = parseAgentJson(content);
+    const selected = parseGateCharacterNames(parsed, names);
+    logApp('info', '自动档案维护：预筛完成', `入选 ${selected.length}/${names.length} 个角色`, selected);
+    if (selected.length === 0) {
+      globalThis.toastr?.info?.('预筛完成：本轮无角色需要更新档案', `[${MODULE_NAME}]`);
+      return;
+    }
+    globalThis.toastr?.info?.(`预筛完成：入选 ${selected.length}/${names.length} 个角色，开始更新档案`, `[${MODULE_NAME}]`);
+    // 复用现有逐角色档案分析（含世界书注入与增量更新），并发执行。
+    const results = await Promise.allSettled(selected.map((name) => analyzeCharacter(name)));
+    const counts = { ok: 0, error: 0, cancelled: 0, skipped: 0, busy: 0 };
+    for (const result of results) {
+      const outcome = result.status === 'fulfilled' ? String(result.value || 'ok') : 'error';
+      counts[outcome] = (counts[outcome] || 0) + 1;
+    }
+    const parts = [];
+    if (counts.ok > 0) parts.push(`${counts.ok} 成功`);
+    if (counts.error > 0) parts.push(`${counts.error} 失败`);
+    if (counts.cancelled > 0) parts.push(`${counts.cancelled} 取消`);
+    if (counts.skipped > 0) parts.push(`${counts.skipped} 跳过`);
+    if (counts.busy > 0) parts.push(`${counts.busy} 进行中`);
+    logApp('info', '自动档案维护：分析结束', parts.join('，') || '无角色可分析');
+    if (counts.error > 0) {
+      globalThis.toastr?.warning?.(`自动档案维护完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+    } else if (counts.ok > 0) {
+      globalThis.toastr?.success?.(`自动档案维护完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+    }
+  } catch (error) {
+    const message = String(error?.message || error);
+    logApp('error', '自动档案维护失败', message);
+    globalThis.toastr?.error?.(`自动档案维护失败：${message.slice(0, 160)}`, `[${MODULE_NAME}]`);
+  } finally {
+    autoArchiveState.running = false;
+  }
+}
+
+async function onAutoArchiveGenerationEnded() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  let settings;
+  try {
+    settings = getSettings(ctx);
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] 自动档案维护：读取设置失败`, error);
+    return;
+  }
+  if (!settings.autoArchiveEnabled) return;
+  // 用户中断生成：跳过，避免对半截回复发起分析。
+  if (ctx?.streamingProcessor?.abortController?.signal?.aborted) {
+    logApp('info', '自动档案维护跳过：生成被中断');
+    return;
+  }
+  const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+  const lastMessage = chat[chat.length - 1];
+  // 末条不是 AI 回复（空生成/失败/系统消息）：本轮没有可分析的新剧情。
+  if (!lastMessage || lastMessage.is_user || lastMessage.is_system) {
+    logApp('debug', '自动档案维护跳过：末条不是 AI 回复');
+    return;
+  }
+  const signature = buildAutoArchiveSignature(lastMessage);
+  if (autoArchiveState.lastSignature === signature) {
+    logApp('debug', '自动档案维护跳过：本轮已处理');
+    return;
+  }
+  if (autoArchiveState.running) {
+    logApp('debug', '自动档案维护跳过：上一轮仍在运行');
+    return;
+  }
+  const roster = getRoster(ctx);
+  const names = Object.keys(roster || {});
+  if (names.length === 0) {
+    logApp('debug', '自动档案维护跳过：无已注册角色');
+    return;
+  }
+  if (!getApiBase(settings) || !String(settings.model || '').trim()) {
+    logApp('warn', '自动档案维护跳过：API 未配置');
+    globalThis.toastr?.warning?.('自动档案维护已开启，但 API 尚未配置（Base URL / 模型）', `[${MODULE_NAME}]`);
+    return;
+  }
+  await runAutoArchiveGate(ctx, settings, names, signature);
+}
+
 function hasMenuEntry() {
   const menu = document.getElementById('extensionsMenu');
   if (!menu) return false;
@@ -4010,6 +4222,7 @@ async function bootstrap() {
     initHostEventLogging();
     onHostEvent(ctx, 'chatChanged', refreshChatBoundViews, '__soullink_chat_changed_handler__');
     onHostEvent(ctx, 'groupSelected', refreshChatBoundViews, '__soullink_group_selected_handler__');
+    onHostEvent(ctx, 'generationEnded', onAutoArchiveGenerationEnded, AUTO_ARCHIVE_END_HANDLER_KEY);
     injectScribbleFilters();
     createPanel();
     createSphere();
