@@ -1176,12 +1176,12 @@ function createPanel() {
               </select>
               <input id="soullink-api-model" class="soullink-input" type="text" placeholder="或手动填写模型名称" autocomplete="off" spellcheck="false" />
             </div>
-            <p class="soullink-api__hint">支持任意 OpenAI 兼容接口；不支持 /models 的渠道可手动填写模型名称。</p>
+            <p class="soullink-api__hint">填入接口地址与 API Key 后点「连接并拉取模型」，再从列表选择模型；不支持模型列表的渠道可直接手动填写模型名称。</p>
           </div>
         </section>
         <section id="${LOG_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-log">
-            <div class="soullink-log__chips" role="group" aria-label="按级别筛选日志">
+                        <div class="soullink-log__chips" role="group" aria-label="按级别筛选日志">
               <button type="button" class="soullink-log__chip is-active" data-level="">全部 <span class="soullink-log__chip-count" data-level="">0</span></button>
               <button type="button" class="soullink-log__chip" data-level="debug">调试 <span class="soullink-log__chip-count" data-level="debug">0</span></button>
               <button type="button" class="soullink-log__chip" data-level="info">信息 <span class="soullink-log__chip-count" data-level="info">0</span></button>
@@ -1228,7 +1228,7 @@ function createPanel() {
         </section>
         <section id="${PRESET_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-preset">
-            <p class="soullink-preset__note">四个子系统的提示词都放在这里。修改后记得点击「保存」；「恢复默认」会把当前提示词还原为出厂内容。</p>
+            <p class="soullink-preset__note">四个子系统的提示词按标签页切换编辑，改完点「💾 保存」；「↺ 恢复默认」可还原出厂内容。</p>
             <div id="${PRESET_TABS_ID}" class="soullink-preset__tabs" role="tablist" aria-label="选择要编辑的提示词">
               ${Object.entries(PRESET_META).map(([key, meta]) => `
                 <button type="button" class="soullink-preset__tab${key === presetActiveKey ? ' is-active' : ''}" role="tab" aria-selected="${key === presetActiveKey ? 'true' : 'false'}" data-prompt-key="${key}" title="${meta.title}">${meta.label}</button>
@@ -1249,7 +1249,7 @@ function createPanel() {
         </section>
         <section id="${REGISTER_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-register">
-            <p class="soullink-register__note">输入角色名字，点击「注册当前角色」即可把角色加入名单。名单与当前聊天绑定，注销角色会删除其档案数据。</p>
+            <p class="soullink-register__note">输入角色名字后点「＋ 注册当前角色」（或直接回车）即可加入名单；名单与当前聊天绑定，「注销」会删除该角色的档案数据。</p>
             <div class="soullink-register__add">
               <input id="${REGISTER_INPUT_ID}" class="soullink-input soullink-register__input" type="text" placeholder="输入角色名字…" autocomplete="off" spellcheck="false" />
               <button type="button" id="${REGISTER_ADD_ID}" class="soullink-btn">＋ 注册当前角色</button>
@@ -1263,7 +1263,7 @@ function createPanel() {
         </section>
         <section id="${ARCHIVE_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-archive">
-            <p class="soullink-archive__note">档案与当前聊天绑定，展示已注册角色的信息。点击「分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话配合「档案系统」提示词更新档案；多个角色可并发分析。</p>
+            <p class="soullink-archive__note">「🔮 分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话与世界书自动更新档案（可并发），「🔮 分析全部角色」一键更新名单里所有角色，也可「✏️ 编辑」手动修改。</p>
             <div class="soullink-archive__toolbar">
               <span id="${ARCHIVE_STATUS_ID}" class="soullink-archive__count">0 个档案</span>
               <span id="${ARCHIVE_CHAT_ID}" class="soullink-archive__chat"></span>
@@ -1274,7 +1274,7 @@ function createPanel() {
         </section>
         <section id="${WORLDBOOK_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-worldbook">
-            <p class="soullink-worldbook__note">展示当前聊天激活的世界书条目。触发规则完全由 SillyTavern 决定（扫描深度 / 递归 / 概率 / 预算等）；勾选「排除」的条目无论是否触发，都不会注入本程序的档案分析提示词。条目按「常驻 → 本次触发 → 未触发 → 禁用」排序，每本书可用搜索框按条目名称筛选。触发条目按位置注入：注入前/注入后进首尾块，AN/深度/示例/出口进 <World_Info_Extra> 补充块。</p>
+            <p class="soullink-worldbook__note">想让某条设定不参与档案分析，勾选该条目左侧的复选框排除即可；点「清除排除」可恢复。</p>
             <div class="soullink-worldbook__toolbar">
               <span id="${WORLDBOOK_STATUS_ID}" class="soullink-worldbook__status">读取中…</span>
               <span id="${WORLDBOOK_CHAT_ID}" class="soullink-worldbook__chat"></span>
