@@ -583,14 +583,22 @@ select.soullink-input {
 
 .soullink-home__note {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 16px;
   padding: 10px 14px;
   background: rgba(124, 92, 191, 0.12);
   border: 2px dashed rgba(124, 92, 191, 0.55);
   border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
   transform: rotate(-0.8deg);
+}
+
+.soullink-home__note-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .soullink-home__hello {
@@ -604,6 +612,59 @@ select.soullink-input {
   margin: 0;
   font-size: 12px;
   opacity: 0.65;
+}
+
+.soullink-home__round {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--sl-violet);
+  font-size: 15px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 2.5px dashed var(--sl-violet);
+  border-radius: 46% 54% 50% 50% / 54% 46% 54% 46%;
+  transform: rotate(4deg);
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.soullink-home__round:hover {
+  background: rgba(124, 92, 191, 0.16);
+  transform: rotate(-4deg) scale(1.08);
+  box-shadow: 3px 3px 0 rgba(124, 92, 191, 0.3);
+}
+
+.soullink-home__round:active {
+  transform: rotate(0deg) scale(0.94);
+}
+
+.soullink-home__round-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--sl-paper);
+  background: #9aa0a6;
+  pointer-events: none;
+}
+
+.soullink-home__round-badge[data-state='ok'] {
+  background: #4f9a45;
+}
+
+.soullink-home__round-badge[data-state='warn'] {
+  background: #e0a33b;
+}
+
+.soullink-home__round-badge[data-state='error'] {
+  background: #d64550;
 }
 
 .soullink-home__grid {
@@ -715,6 +776,193 @@ select.soullink-input {
   color: #b03a48;
   border-color: rgba(229, 107, 111, 0.95);
   background: rgba(229, 107, 111, 0.2);
+}
+
+/* ---------- 上一轮角色扮演 ---------- */
+.soullink-round {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.soullink-round [hidden] {
+  display: none !important;
+}
+
+.soullink-round__note {
+  margin: 0;
+  padding-left: 8px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  opacity: 0.6;
+  border-left: 3px solid var(--sl-yellow);
+}
+
+.soullink-round__empty {
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  opacity: 0.75;
+  background: rgba(255, 255, 255, 0.5);
+  border: 2px dashed rgba(61, 43, 31, 0.35);
+  border-radius: 255px 14px 235px 14px / 14px 235px 14px 255px;
+}
+
+.soullink-round__summary-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 2px solid rgba(61, 43, 31, 0.3);
+  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
+}
+
+.soullink-round__outcome {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
+  border: 2px solid rgba(95, 157, 201, 0.7);
+  color: var(--sl-blue);
+  background: rgba(255, 255, 255, 0.75);
+  transform: rotate(-0.8deg);
+}
+
+.soullink-round__outcome[data-state='ok'] {
+  color: #4f7a33;
+  border-color: rgba(123, 160, 91, 0.9);
+  background: rgba(123, 160, 91, 0.18);
+}
+
+.soullink-round__outcome[data-state='warn'] {
+  color: #9a6b1d;
+  border-color: rgba(242, 193, 78, 0.95);
+  background: rgba(242, 193, 78, 0.22);
+}
+
+.soullink-round__outcome[data-state='error'] {
+  color: #b03a48;
+  border-color: rgba(229, 107, 111, 0.95);
+  background: rgba(229, 107, 111, 0.2);
+}
+
+.soullink-round__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.soullink-round__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(124, 92, 191, 0.08);
+  border: 2px dashed rgba(124, 92, 191, 0.4);
+  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
+}
+
+.soullink-round__stat-label {
+  font-size: 10.5px;
+  opacity: 0.6;
+}
+
+.soullink-round__stat-value {
+  font-size: 13px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.soullink-round__names {
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.85;
+  word-break: break-all;
+}
+
+.soullink-round__characters-head,
+.soullink-round__inject-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.soullink-round__characters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.soullink-round__character {
+  background: rgba(255, 255, 255, 0.6);
+  border: 2px solid rgba(61, 43, 31, 0.3);
+  border-radius: 15px 235px 15px 255px / 255px 15px 235px 15px;
+}
+
+.soullink-round__character-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgba(124, 92, 191, 0.1);
+  border-bottom: 2px dashed rgba(124, 92, 191, 0.35);
+  border-radius: 15px 235px 0 0 / 255px 15px 0 0;
+}
+
+.soullink-round__character-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.soullink-round__character-tag {
+  padding: 2px 8px;
+  font-size: 10.5px;
+  color: var(--sl-violet);
+  background: rgba(124, 92, 191, 0.14);
+  border: 2px dashed rgba(124, 92, 191, 0.55);
+  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
+}
+
+.soullink-round__character-body {
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.soullink-round__inject-text {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 260px;
+  overflow: auto;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--sl-ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px solid rgba(61, 43, 31, 0.3);
+  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
+}
+
+.soullink-round__copy {
+  flex: none;
+  width: auto;
+  padding: 5px 12px;
+  font-size: 12px;
 }
 
 /* ---------- 日志系统 ---------- */
@@ -1600,6 +1848,10 @@ select.soullink-input {
 
 .soullink-panel__dialog.is-worldbook-mode {
   width: 600px;
+}
+
+.soullink-panel__dialog.is-round-mode {
+  width: 560px;
 }
 
 .soullink-worldbook {

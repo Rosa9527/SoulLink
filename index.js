@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.9.10';
+const MODULE_VERSION = '0.9.11';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -77,6 +77,15 @@ const WORLDBOOK_LIST_ID = 'soullink-worldbook-list';
 const WORLDBOOK_BANNER_ID = 'soullink-worldbook-banner';
 const REGISTER_NPC_STATUS_ID = 'soullink-register-npc-status';
 const REGISTER_NPC_TOGGLE_ID = 'soullink-register-npc-toggle';
+const ROUND_VIEW_ID = 'soullink-round-view';
+const ROUND_ICON_CLASS = 'fa-solid fa-masks-theater';
+const HOME_ROUND_ID = 'soullink-home-round';
+const HOME_ROUND_BADGE_ID = 'soullink-home-round-badge';
+const ROUND_SUMMARY_ID = 'soullink-round-summary';
+const ROUND_EMPTY_ID = 'soullink-round-empty';
+const ROUND_CHARACTERS_ID = 'soullink-round-characters';
+const ROUND_INJECT_TEXT_ID = 'soullink-round-inject-text';
+const ROUND_COPY_ID = 'soullink-round-copy';
 // 角色推演注入键：以 IN_CHAT + depth 0 注入「最后一条用户消息正下方」，
 // 主模型生成结束后立即清空，避免泄漏到后续轮次。
 const NPC_DEDUCTION_INJECT_KEY = 'SoulLink_NPC_Deduction';
@@ -1185,12 +1194,14 @@ const PANEL_VIEW_TITLES = Object.freeze({
   [REGISTER_VIEW_ID]: '角色扮演',
   [ARCHIVE_VIEW_ID]: '档案系统',
   [WORLDBOOK_VIEW_ID]: '世界书',
+  [ROUND_VIEW_ID]: '上一轮角色扮演',
 });
 const PANEL_WIDE_MODES = Object.freeze({
   [LOG_VIEW_ID]: 'is-log-mode',
   [PRESET_VIEW_ID]: 'is-preset-mode',
   [ARCHIVE_VIEW_ID]: 'is-archive-mode',
   [WORLDBOOK_VIEW_ID]: 'is-worldbook-mode',
+  [ROUND_VIEW_ID]: 'is-round-mode',
 });
 
 function showPanelView(viewId) {
@@ -1229,6 +1240,10 @@ function showPanelView(viewId) {
     renderWorldBookList();
     logApp('debug', '打开世界书视图');
   }
+  if (viewId === ROUND_VIEW_ID) {
+    renderRoundView();
+    logApp('debug', '打开上一轮角色扮演视图');
+  }
   const back = document.getElementById(PANEL_BACK_ID);
   if (back) back.style.visibility = viewId === HOME_VIEW_ID ? 'hidden' : 'visible';
   const title = document.getElementById(PANEL_TITLE_ID);
@@ -1245,6 +1260,8 @@ function initPanelViews(panel) {
   document.getElementById(HOME_REGISTER_CARD_ID)?.addEventListener('click', () => showPanelView(REGISTER_VIEW_ID));
   document.getElementById(HOME_ARCHIVE_CARD_ID)?.addEventListener('click', () => showPanelView(ARCHIVE_VIEW_ID));
   document.getElementById(HOME_WORLDBOOK_CARD_ID)?.addEventListener('click', () => showPanelView(WORLDBOOK_VIEW_ID));
+  document.getElementById(HOME_ROUND_ID)?.addEventListener('click', () => showPanelView(ROUND_VIEW_ID));
+  document.getElementById(ROUND_COPY_ID)?.addEventListener('click', copyRoundInjectionText);
   panel.dataset.viewsReady = 'true';
 }
 
@@ -1281,8 +1298,14 @@ function createPanel() {
       <div class="soullink-panel__body">
         <section id="${HOME_VIEW_ID}" class="soullink-view is-active" aria-hidden="false">
           <div class="soullink-home__note">
-            <p class="soullink-home__hello">嘿，欢迎回来！</p>
-            <p class="soullink-home__sub">想从哪里开始？</p>
+            <div class="soullink-home__note-text">
+              <p class="soullink-home__hello">嘿，欢迎回来！</p>
+              <p class="soullink-home__sub">想从哪里开始？</p>
+            </div>
+            <button type="button" id="${HOME_ROUND_ID}" class="soullink-home__round" title="查看上一轮角色扮演的结果">
+              <span class="${ROUND_ICON_CLASS}"></span>
+              <span id="${HOME_ROUND_BADGE_ID}" class="soullink-home__round-badge" data-state="idle" hidden></span>
+            </button>
           </div>
           <div class="soullink-home__grid">
             <button type="button" id="${HOME_API_CARD_ID}" class="soullink-home__card soullink-home__card--api" title="打开 API 连接设置">
@@ -1456,6 +1479,22 @@ function createPanel() {
             </div>
             <div id="${WORLDBOOK_BANNER_ID}" class="soullink-worldbook__banner" hidden></div>
             <div id="${WORLDBOOK_LIST_ID}" class="soullink-worldbook__list"></div>
+          </div>
+        </section>
+        <section id="${ROUND_VIEW_ID}" class="soullink-view" aria-hidden="true">
+          <div class="soullink-round">
+            <p class="soullink-round__note">展示最近一轮「发送前角色推演」的结果：预筛入选、各角色内心独白，以及最终注入 SillyTavern 的提示词原文。</p>
+            <div id="${ROUND_SUMMARY_ID}" class="soullink-round__summary" hidden></div>
+            <div id="${ROUND_EMPTY_ID}" class="soullink-round__empty" hidden>还没有推演记录：开启「🎭 前置推演」并发送消息后，这里会展示最近一轮的结果。</div>
+            <div class="soullink-round__characters-head" hidden>
+              <span class="soullink-panel__section-title">角色内心独白</span>
+            </div>
+            <div id="${ROUND_CHARACTERS_ID}" class="soullink-round__characters" hidden></div>
+            <div class="soullink-round__inject-head" hidden>
+              <span class="soullink-panel__section-title">注入提示词原文</span>
+              <button type="button" id="${ROUND_COPY_ID}" class="soullink-btn soullink-btn--ghost soullink-round__copy">⧉ 复制</button>
+            </div>
+            <pre id="${ROUND_INJECT_TEXT_ID}" class="soullink-round__inject-text" hidden></pre>
           </div>
         </section>
       </div>
@@ -3170,6 +3209,7 @@ function refreshHomeStatuses() {
   refreshHomeRegisterStatus();
   refreshHomeArchiveStatus();
   refreshHomeWorldBookStatus();
+  refreshHomeRoundBadge();
 }
 
 function refreshHomeRegisterStatus() {
@@ -3213,6 +3253,7 @@ function refreshChatBoundViews() {
   }
   if (activeView.id === ARCHIVE_VIEW_ID) renderArchiveList();
   if (activeView.id === WORLDBOOK_VIEW_ID) renderWorldBookList();
+  if (activeView.id === ROUND_VIEW_ID) renderRoundView();
 }
 
 // ---------- 剧情前置 NPC 推演：视图 UI ----------
@@ -3239,6 +3280,152 @@ function renderNpcDeductionToggle() {
   if (toggle) {
     toggle.textContent = `🎭 前置推演：${enabled ? '开' : '关'}`;
     toggle.classList.toggle('is-active', enabled);
+  }
+}
+
+// ---------- 上一轮角色扮演：首页入口与可视化 ----------
+function describeRoundOutcome(round) {
+  if (!round) return '尚无记录';
+  if (round.injected) return '已注入 · ' + round.okNames.length + ' 个角色';
+  if (round.timedOut) return '超时中止 · 未注入';
+  if (round.skipped) return '未注入 · 本轮无角色';
+  if (round.okNames.length > 0) return '未注入 · 宿主不支持注入';
+  return '未注入 · 推演失败';
+}
+
+function refreshHomeRoundBadge() {
+  const badge = document.getElementById(HOME_ROUND_BADGE_ID);
+  const button = document.getElementById(HOME_ROUND_ID);
+  if (!badge || !button) return;
+  const round = npcDeductionLastRound;
+  if (!round) {
+    badge.hidden = true;
+    badge.dataset.state = 'idle';
+    button.title = '查看上一轮角色扮演的结果（暂无记录）';
+    return;
+  }
+  badge.hidden = false;
+  badge.dataset.state = round.injected ? 'ok' : (round.timedOut ? 'warn' : (round.skipped ? 'idle' : 'error'));
+  const parts = ['时间 ' + formatArchiveTime(round.at)];
+  if (round.gateSelected.length) parts.push('预筛 ' + round.gateSelected.length + '/' + round.gateTotal);
+  if (round.okNames.length) parts.push('成功 ' + round.okNames.length);
+  if (round.failedNames.length) parts.push('失败 ' + round.failedNames.length);
+  parts.push(describeRoundOutcome(round));
+  button.title = '上一轮角色扮演 · ' + parts.join('，') + '（点击查看详情）';
+}
+
+function buildRoundSummary(round) {
+  const wrap = document.createElement('div');
+  wrap.className = 'soullink-round__summary-inner';
+  const outcome = document.createElement('span');
+  outcome.className = 'soullink-round__outcome';
+  outcome.dataset.state = round.injected ? 'ok' : (round.timedOut ? 'warn' : (round.skipped ? 'idle' : 'error'));
+  outcome.textContent = describeRoundOutcome(round);
+  const stats = document.createElement('div');
+  stats.className = 'soullink-round__stats';
+  const items = [
+    ['时间', formatArchiveTime(round.at)],
+    ['耗时', (round.durationMs / 1000).toFixed(1) + 's'],
+    ['预筛', round.gateSelected.length + '/' + round.gateTotal],
+    ['成功', String(round.okNames.length)],
+    ['失败', String(round.failedNames.length)],
+    ['跳过', String(round.skippedNames.length)],
+  ];
+  for (const item of items) {
+    const stat = document.createElement('div');
+    stat.className = 'soullink-round__stat';
+    const label = document.createElement('span');
+    label.className = 'soullink-round__stat-label';
+    label.textContent = item[0];
+    const value = document.createElement('span');
+    value.className = 'soullink-round__stat-value';
+    value.textContent = item[1];
+    stat.append(label, value);
+    stats.appendChild(stat);
+  }
+  const names = document.createElement('div');
+  names.className = 'soullink-round__names';
+  names.textContent = round.okNames.length > 0
+    ? '角色：' + round.okNames.join('、')
+    : (round.skipped ? '本轮预筛无角色有戏份' : '本轮没有成功推演的角色');
+  wrap.append(outcome, stats, names);
+  return wrap;
+}
+
+function buildRoundCharacterCard(item) {
+  const card = document.createElement('div');
+  card.className = 'soullink-round__character';
+  const head = document.createElement('div');
+  head.className = 'soullink-round__character-head';
+  const name = document.createElement('span');
+  name.className = 'soullink-round__character-name';
+  name.textContent = item.name;
+  const tag = document.createElement('span');
+  tag.className = 'soullink-round__character-tag';
+  tag.textContent = '内心独白';
+  head.append(name, tag);
+  const body = document.createElement('div');
+  body.className = 'soullink-round__character-body';
+  body.textContent = item.monologue;
+  card.append(head, body);
+  return card;
+}
+
+function renderRoundView() {
+  const summary = document.getElementById(ROUND_SUMMARY_ID);
+  const empty = document.getElementById(ROUND_EMPTY_ID);
+  const charactersHead = document.querySelector('.soullink-round__characters-head');
+  const characters = document.getElementById(ROUND_CHARACTERS_ID);
+  const injectHead = document.querySelector('.soullink-round__inject-head');
+  const injectText = document.getElementById(ROUND_INJECT_TEXT_ID);
+  if (!summary || !empty || !charactersHead || !characters || !injectHead || !injectText) return;
+  const round = npcDeductionLastRound;
+  if (!round) {
+    summary.hidden = true;
+    charactersHead.hidden = true;
+    characters.hidden = true;
+    injectHead.hidden = true;
+    injectText.hidden = true;
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  summary.hidden = false;
+  summary.textContent = '';
+  summary.appendChild(buildRoundSummary(round));
+  const hasCharacters = round.characters.length > 0;
+  charactersHead.hidden = !hasCharacters;
+  characters.hidden = !hasCharacters;
+  characters.textContent = '';
+  for (const item of round.characters) {
+    characters.appendChild(buildRoundCharacterCard(item));
+  }
+  const hasInjection = Boolean(round.injectionText);
+  injectHead.hidden = !hasInjection;
+  injectText.hidden = !hasInjection;
+  injectText.textContent = round.injectionText || '';
+}
+
+async function copyRoundInjectionText() {
+  const text = npcDeductionLastRound?.injectionText || '';
+  if (!text) return;
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    }
+    globalThis.toastr?.success?.('已复制注入提示词原文', '[' + MODULE_NAME + ']');
+  } catch (error) {
+    console.warn('[' + MODULE_NAME + '] 复制注入提示词失败', error);
+    globalThis.toastr?.warning?.('复制失败，请手动选择文本', '[' + MODULE_NAME + ']');
   }
 }
 // ---------- 档案分析：AI 调用 ----------
@@ -4341,6 +4528,8 @@ const npcDeductionState = {
   running: false,
   lastSignature: '',
 };
+// 最近一轮推演快照：供首页「上一轮角色扮演」可视化查看（含各角色独白与注入原文）。
+let npcDeductionLastRound = null;
 function getExtensionPromptApi(ctx) {
   const context = ctx || getContextSafe();
   if (!context) return null;
@@ -4553,11 +4742,21 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
     injected: false,
     skipped: false,
   };
+  let roundCharacters = [];
+  let injectionText = '';
   const finish = (overrides = {}) => {
     clearTimeout(deadline);
     record.durationMs = Date.now() - startedAt;
     Object.assign(record, overrides);
+    npcDeductionLastRound = {
+      ...record,
+      characters: roundCharacters,
+      injectionText,
+    };
     renderNpcDeductionToggle();
+    refreshHomeRoundBadge();
+    const activeView = document.querySelector('.soullink-view.is-active');
+    if (activeView?.id === ROUND_VIEW_ID) renderRoundView();
   };
   try {
     globalThis.toastr?.info?.('角色预筛中…', `[${MODULE_NAME}]`);
@@ -4587,6 +4786,7 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
       const name = selected[i];
       if (result.status === 'fulfilled' && result.value?.status === 'ok' && result.value.monologue) {
         record.okNames.push(name);
+        roundCharacters.push({ name, monologue: result.value.monologue });
         succeeded.push({ name, monologue: result.value.monologue });
       } else if (result.status === 'fulfilled' && result.value?.status === 'skipped') {
         record.skippedNames.push(name);
@@ -4611,7 +4811,7 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
       finish();
       return;
     }
-    const injectionText = buildNpcDeductionInjectionText(succeeded);
+    injectionText = buildNpcDeductionInjectionText(succeeded);
     clearNpcDeductionInjection(ctx);
     api.setExtensionPrompt(NPC_DEDUCTION_INJECT_KEY, injectionText, api.inChat, 0, false, api.systemRole);
     record.injected = true;
