@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '0.8.11';
+const MODULE_VERSION = '0.8.12';
 
 const PANEL_ID = 'soullink-panel';
 const SPHERE_ID = 'soullink-floating-sphere';
@@ -1263,7 +1263,7 @@ function createPanel() {
             </div>
             <div class="soullink-log__actions">
               <button type="button" id="${LOG_PAUSE_ID}" class="soullink-log__action" title="暂停：新日志先缓存（+N），不追加到列表；点「继续」一次性显示">⏸ 暂停</button>
-              <button type="button" id="${LOG_AUTOSCROLL_ID}" class="soullink-log__action is-active" title="跟随：新日志自动滚动到底部（点一下关闭）">⏬ 跟随</button>
+              <button type="button" id="${LOG_AUTOSCROLL_ID}" class="soullink-log__action is-active" title="跟随：钉在底部，新日志自动滚到底部（点一下关闭）">⏬ 跟随</button>
               <button type="button" id="${LOG_CLEAR_ID}" class="soullink-log__action" title="清空缓冲中的所有日志">🧹 清空</button>
               <button type="button" id="${LOG_COPY_ID}" class="soullink-log__action" title="复制全部日志为纯文本">📋 复制</button>
               <button type="button" id="${LOG_EXPORT_ID}" class="soullink-log__action" title="导出完整 JSON 日志文件">💾 导出</button>
@@ -2089,7 +2089,8 @@ function appendLiveLogEntry(entry) {
   if (!list || !view || !entry) return;
   if (!view.classList.contains('is-active') || logState.paused) return;
   if (!entryMatchesLog(entry)) return;
-  const shouldFollow = logAutoScroll && isLogAtBottom(list);
+  // 跟随开启 = 钉在底部：无论当前滚动位置，新日志一律滚到底部显示最新
+  const shouldFollow = logAutoScroll;
   list.querySelector('.soullink-log__empty')?.remove();
   list.appendChild(createLogRow(entry));
   logVisibleCount += 1;
@@ -2228,7 +2229,7 @@ function initLogView(panel) {
     logAutoScroll = !logAutoScroll;
     autoscroll.classList.toggle('is-active', logAutoScroll);
     autoscroll.title = logAutoScroll
-      ? '跟随：新日志自动滚动到底部（点一下关闭）'
+      ? '跟随：钉在底部，新日志自动滚到底部（点一下关闭）'
       : '已停止跟随：新日志仍追加，但不再自动滚动';
     if (logAutoScroll) scrollLogToBottom(document.getElementById(LOG_LIST_ID));
     const ctx = getCtx();
@@ -2238,16 +2239,6 @@ function initLogView(panel) {
     }
   });
 
-  autoscroll?.addEventListener('click', () => {
-    logAutoScroll = !logAutoScroll;
-    autoscroll.classList.toggle('is-active', logAutoScroll);
-    autoscroll.title = logAutoScroll ? '新日志自动滚动到底部' : '新日志不再自动滚动';
-    const ctx = getCtx();
-    if (ctx) {
-      getSettings(ctx).logAutoScroll = logAutoScroll;
-      saveSettings(ctx);
-    }
-  });
 
   const sourceSelect = document.getElementById(LOG_SOURCE_ID);
   sourceSelect?.addEventListener('change', () => {
