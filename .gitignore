@@ -1,0 +1,10 @@
+# 本地开发工具配置（Claude Code 等），不上传
+.claude/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# 构建产物缓存 / 临时文件
+*.tmp
+*.log

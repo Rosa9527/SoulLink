@@ -1,5 +1,6 @@
+// ===== js/constants.js =====
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.0.2';
+const MODULE_VERSION = '1.0.6';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
@@ -162,12 +163,25 @@ const NETWORK_NOISE_PATTERNS = Object.freeze([
   /ipc\.localhost/,
   /\/api\/chats\//,
 ]);
+// 宿主扩展更新检查的已知报错（error 级），属运行环境噪音而非插件故障：
+// TauriTavern 读扩展目录 git remote 时发现 URL 内嵌认证令牌会拒绝做版本对比。
+// 单独成表、用模式匹配，避免与「warn/error 永不误伤」的通用原则冲突。
+const ERROR_NOISE_PATTERNS = Object.freeze([
+  /Authenticated Git remote URLs are not supported/,
+  /Failed to get extension version/,
+  /\/api\/extensions\/version/,
+]);
 const LOG_FULL_BODY_MAX = 5;
 const CHAT_COMPLETION_TIMEOUT_MS = 60000;
 // 对话请求自动重试：上游（如 api.deepseek.com）在并发压力下会瞬态返回
 // 「200 + 无内容 JSON」或 429/5xx，重试可自愈；非瞬态错误（401/400 等）不重试。
 const CHAT_COMPLETION_MAX_ATTEMPTS = 3;
 const CHAT_COMPLETION_RETRY_DELAY_MS = 600;
+// 对话请求输出预算：DeepSeek 官方 deepseek-reasoner 的 max_tokens 默认只有 4096，
+// 且该预算同时包含思维链与最终答案——档案分析提示词很大，模型常在思考阶段就耗尽
+// 预算，返回「200 + content 为空 + finish_reason=length」，重试无法自愈。
+// 显式给足输出预算（deepseek-chat 上限 8192）可根治这类空回复。
+const CHAT_COMPLETION_DEFAULT_MAX_TOKENS = 8192;
 const ARCHIVE_RECENT_MESSAGE_COUNT = 4;
 // 消息正则过滤：档案分析 / 档案预筛 / 角色扮演预筛 / 角色推演这四种调用都会把
 // 最近的几条消息作为上下文，先按启用的正则把每条消息内容中匹配的部分剔除，
@@ -225,6 +239,10 @@ const LOG_CAPTURE_KEY = '__soullink_log_capture__';
 const LOG_EVENT_LOG_KEY = '__soullink_log_event_handler__';
 const NETWORK_CAPTURE_KEY = '__soullink_network_capture__';
 const AUTO_ARCHIVE_END_HANDLER_KEY = '__soullink_auto_archive_end_handler__';
+const MAIN_GENERATION_STARTED_HANDLER_KEY = '__soullink_main_generation_started_handler__';
+const MAIN_GENERATION_STOPPED_HANDLER_KEY = '__soullink_main_generation_stopped_handler__';
+const MAIN_GENERATION_CHAT_CHANGED_HANDLER_KEY = '__soullink_main_generation_chat_changed_handler__';
+const MAIN_GENERATION_GROUP_SELECTED_HANDLER_KEY = '__soullink_main_generation_group_selected_handler__';
 const NPC_MESSAGE_SENT_HANDLER_KEY = '__soullink_npc_message_sent_handler__';
 const NPC_CLEANUP_END_HANDLER_KEY = '__soullink_npc_cleanup_end_handler__';
 const NPC_CLEANUP_STOP_HANDLER_KEY = '__soullink_npc_cleanup_stop_handler__';
@@ -437,6 +455,8 @@ const DEFAULT_SETTINGS = Object.freeze({
 
 const FALLBACK_SETTINGS_STORE = new WeakMap();
 
+
+// ===== js/utils.js =====
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === 'function') return globalThis.structuredClone(value);
   return JSON.parse(JSON.stringify(value));
@@ -718,9 +738,10 @@ function looksLikeJson(text) {
   return trimmed.startsWith('{') || trimmed.startsWith('[');
 }
 
-// 检查响应文本里是否真的带有可用文本：上游（如 DeepSeek）在并发压力下会返回
-// 「200 + choices 为空 / content 为空的 JSON」——能解析但等于没回复，需要走直连与
-// 自动重试而不是直接判死；错误信封（{error}）不算缺内容，交给上游错误分支处理。
+// 检查响应文本里是否真的带有可用文本：content 为空但 reasoning_content 有内容时
+// （deepseek-v4-flash 等模型偶发把答案写进思维链字段）仍视为可用；两者皆空才判
+// 「等于没回复」，走直连与自动重试而不是直接判死；错误信封（{error}）不算缺内容，
+// 交给上游错误分支处理。
 function responseContainsUsableText(responseText) {
   const trimmed = String(responseText || '').trim();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
@@ -738,8 +759,13 @@ function responseContainsUsableText(responseText) {
       if (nested && typeof nested === 'object') data = nested;
     } catch {}
   }
-  const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text;
-  return typeof content === 'string' && Boolean(content.trim());
+  const choice = data?.choices?.[0];
+  const content = choice?.message?.content ?? choice?.text;
+  if (typeof content === 'string' && content.trim()) return true;
+  // deepseek-v4-flash 等带思考能力的模型偶发把最终答案写进 reasoning_content、
+  // content 留空（finish_reason=stop）——此时响应仍有可用文本，不应判为代理损坏。
+  const reasoning = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content : '';
+  return Boolean(reasoning.trim());
 }
 
 async function fetchText(url, options = {}) {
@@ -853,6 +879,9 @@ async function fetchModelList(settings) {
   return models;
 }
 
+
+
+// ===== js/host.js =====
 function getContextSafe() {
   try {
     return globalThis.Luker?.getContext?.() || globalThis.SillyTavern?.getContext?.() || null;
@@ -913,6 +942,8 @@ function onHostEvent(ctx, eventName, handler, key) {
   eventSource.on(eventType, wrapped);
 }
 
+
+// ===== js/ui-shell.js =====
 function getSphere() {
   return document.getElementById(SPHERE_ID);
 }
@@ -1601,7 +1632,7 @@ function createPanel() {
               <button type="button" id="${LOG_COPY_ID}" class="soullink-log__action" title="复制全部日志为纯文本">📋 复制</button>
               <button type="button" id="${LOG_EXPORT_ID}" class="soullink-log__action" title="导出完整 JSON 日志文件">💾 导出</button>
               <button type="button" id="${LOG_FULL_BODY_EXPORT_ID}" class="soullink-log__action" title="导出最近 ${LOG_FULL_BODY_MAX} 次对话请求的完整请求体/响应体（未截断）">📦 完整请求体</button>
-              <button type="button" id="${LOG_NOISE_ID}" class="soullink-log__action is-active" title="过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用）">🔇 过滤噪音</button>
+              <button type="button" id="${LOG_NOISE_ID}" class="soullink-log__action is-active" title="过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用 / 宿主扩展更新检查报错）">🔇 过滤噪音</button>
             </div>
             <div class="soullink-log__console">
               <div id="${LOG_LIST_ID}" class="soullink-log__list" role="log" aria-live="off" aria-label="运行日志"></div>
@@ -1731,6 +1762,8 @@ function createPanel() {
   return panel;
 }
 
+
+// ===== js/views-api.js =====
 // ---------- API 连接面板 UI ----------
 function setApiStatus(message, state = 'idle') {
   const status = document.getElementById(API_STATUS_ID);
@@ -1873,6 +1906,8 @@ function initApiSection(panel) {
   panel.dataset.apiReady = 'true';
 }
 
+
+// ===== js/views-filters.js =====
 // ---------- 正则过滤面板 UI ----------
 let filterEditingId = null; // 正在编辑的正则 id；null = 新建
 
@@ -2209,6 +2244,8 @@ function initFilterSection(panel) {
   logApp('info', '正则过滤系统已就绪');
 }
 
+
+// ===== js/views-log.js =====
 // ---------- 日志系统：捕获与存储 ----------
 const CONSOLE_ORIGINALS = {};
 // 热重载共享状态：脚本重新执行时，新旧实例共用同一份缓冲与暂停/序列状态，
@@ -2309,6 +2346,8 @@ function pushLogEntry(level, source, args, detail) {
         && LOG_NOISE_PREFIXES.some((prefix) => entry.message.startsWith(prefix))) return;
       if (source === 'network' && safeLevel === 'debug'
         && NETWORK_NOISE_PATTERNS.some((pattern) => pattern.test(entry.message))) return;
+      // 宿主扩展更新检查的已知报错（error 级，见 constants 注释）：按内容精确匹配，不误伤其他 error。
+      if (ERROR_NOISE_PATTERNS.some((pattern) => pattern.test(entry.message))) return;
     }
     // 连续重复折叠：同一级别/来源/内容紧挨着出现时，只更新最后一条的计数与时间
     const last = logEntries[logEntries.length - 1];
@@ -2875,7 +2914,7 @@ function initLogView(panel) {
   noiseToggle?.addEventListener('click', () => {
     logConsoleNoise = !logConsoleNoise;
     noiseToggle.classList.toggle('is-active', logConsoleNoise);
-    noiseToggle.title = logConsoleNoise ? '过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用）' : '不过滤噪音（显示全部 console 与网络日志）';
+    noiseToggle.title = logConsoleNoise ? '过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用 / 宿主扩展更新检查报错）' : '不过滤噪音（显示全部 console 与网络日志）';
     const ctx = getCtx();
     if (ctx) {
       getSettings(ctx).logConsoleNoise = logConsoleNoise;
@@ -3093,6 +3132,13 @@ function exposeLogApi() {
   };
 }
 
+// ---------- 日志系统：启动捕获（热重载安全） ----------
+initLogCapture();
+exposeLogApi();
+initNetworkCapture();
+
+
+// ===== js/views-presets.js =====
 // ---------- 预设系统：视图 UI ----------
 let presetActiveKey = PRESET_DEFAULT_KEY;
 const presetUnsaved = {};
@@ -3230,10 +3276,9 @@ function initPresetSection(panel) {
   panel.dataset.presetReady = 'true';
   logApp('info', '预设系统已就绪');
 }
-initLogCapture();
-exposeLogApi();
-initNetworkCapture();
 
+
+// ===== js/views-register.js =====
 // ---------- 注册系统与档案系统：数据模型 ----------
 const archiveAnalysisState = {}; // 角色名 -> { state: 'idle'|'busy'|'ok'|'error', message, detail }
 const archiveEditState = {};     // 角色名 -> true（处于编辑态）
@@ -3349,6 +3394,7 @@ function rebuildFloorTraceSnapshot(ctx) {
   floorTraceLastChatKey = getCurrentChatKey(ctx);
   floorTraceSnapshots.set(floorTraceLastChatKey, getChatSignatureSet(ctx));
   floorTraceLastLengths.set(floorTraceLastChatKey, Array.isArray(ctx.chat) ? ctx.chat.length : 0);
+  floorTraceLastChat = Array.isArray(ctx.chat) ? ctx.chat.slice() : [];
 }
 
 // 对比快照与当前聊天：返回已消失楼层的签名集合，并顺手把快照重建为当前状态。
@@ -3390,13 +3436,19 @@ function onFloorTraceMessageDeleted() {
 
 // 聊天 DOM 观察：删楼 / 重生成会移除 .mes 元素、不触发 chatChanged，宿主事件也只回传长度；
 // 观察 #chat 的结构变化既维持快照新鲜（新增楼层），也能在宿主事件缺失时兜底清理。
+// 兜底分两条路：
+// 1. 直接消费 MutationRecord.removedNodes：被移除的 .mes 元素带 mesid（消息在 chat 里的下标），
+//    对照「上次快照时的聊天副本」即可拿到被删消息本身，签名直接清理——不依赖快照时序，
+//    连续删两层（最新 assistant + 最新 user）时每层移除都会各自触发，两层都能清到；
+// 2. 快照 diff 兜底：与 removedNodes 路径幂等，覆盖 removedNodes 拿不到消息的场景。
 // 聊天切换 / 重载会先清空 DOM 再重新渲染，此时 ctx.chat 为空或 chatKey 已切换，
 // 直接跳过对比，避免把「重渲染」误判成「删楼」；其他扩展原地改写消息内容
 // （如智绘姬重渲染最新楼层）由 diff 的楼层数守卫拦截，同样不会误清理。
 let floorTraceObserver = null; // { observer, target }
 let floorTraceLastChatKey = '';
+let floorTraceLastChat = []; // 上次快照时的聊天副本（按下标取被删消息）
 
-function onFloorTraceDomChanged() {
+function onFloorTraceDomChanged(records) {
   const ctx = getContextSafe();
   if (!ctx) return;
   const chatKey = getCurrentChatKey(ctx);
@@ -3405,8 +3457,45 @@ function onFloorTraceDomChanged() {
     floorTraceLastChatKey = chatKey;
     return;
   }
+  // 路径 1：直接消费被移除的 .mes 元素（mesid = 消息在 chat 里的下标），
+  // 从上次快照的聊天副本取回被删消息签名并清理。连续删两层时每层各触发一次，
+  // 不受「两次删除之间快照被提前重建」影响。
+  const removedSignatures = new Set();
+  if (Array.isArray(records)) {
+    for (const record of records) {
+      // 真实浏览器里 removedNodes / addedNodes 是 NodeList（可迭代、有 length），测试沙箱里是数组。
+      if (!record || !record.removedNodes || typeof record.removedNodes.length !== 'number') continue;
+      for (const node of record.removedNodes) {
+        if (!node || typeof node.getAttribute !== 'function') continue;
+        // 元素仍连接在 DOM（移动 / 重排）或同一记录里又被加回（move）不算删除。
+        if (node.isConnected || (record.addedNodes && Array.prototype.includes.call(record.addedNodes, node))) continue;
+        const mesElements = node.classList && node.classList.contains('mes')
+          ? [node]
+          : (typeof node.querySelectorAll === 'function' ? node.querySelectorAll('.mes') : []);
+        for (const mes of mesElements) {
+          const mesId = mes.getAttribute('mesid');
+          if (mesId === null || mesId === undefined || mesId === '') continue;
+          const message = floorTraceLastChat[Number(mesId)];
+          const signature = message ? buildAutoArchiveSignature(message) : '';
+          if (signature) removedSignatures.add(signature);
+        }
+      }
+    }
+  }
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
   if (chat.length === 0) return; // 清空 / 重载中：保留快照，等 chatChanged 重建。
+  // 与 diff 同款守卫：楼层数必须减少才算删楼（内容编辑 / 重渲染 / 虚拟化窗口滚动不清理），
+  // 且被删签名必须已不在当前聊天里（重渲染后元素被替换时，消息内容仍在聊天中，不清理）。
+  const previousLength = floorTraceLastLengths.get(chatKey) ?? 0;
+  if (chat.length < previousLength && removedSignatures.size > 0) {
+    const currentSignatures = getChatSignatureSet(ctx);
+    const toPurge = new Set();
+    for (const signature of removedSignatures) {
+      if (!currentSignatures.has(signature)) toPurge.add(signature);
+    }
+    if (toPurge.size > 0) purgeArchiveEntriesForDeletedFloors(ctx, toPurge);
+  }
+  // 路径 2：快照 diff 兜底（幂等，覆盖 removedNodes 拿不到消息的场景）。
   const deleted = diffFloorTraceSnapshot(ctx);
   if (deleted.size > 0) purgeArchiveEntriesForDeletedFloors(ctx, deleted);
 }
@@ -3526,6 +3615,8 @@ function initRegisterSection(panel) {
   logApp('info', '角色扮演已就绪');
 }
 
+
+// ===== js/views-archive.js =====
 // ---------- 档案系统：视图 UI ----------
 function formatArchiveTime(timestamp) {
   if (!timestamp) return '尚未分析';
@@ -3904,6 +3995,14 @@ function showArchiveAnalysisError(name, state) {
   (copyBtn.disabled ? overlay.querySelector('.soullink-archive-error__close-btn') : copyBtn)?.focus?.();
 }
 
+// 批量执行角色分析：并发执行全部角色。v1.0.3 曾对 DeepSeek 官方地址改为串行，
+// 以规避「并发下 200 + 空内容」——v1.0.5 定位到真实根因是模型把答案写进
+// reasoning_content（content 留空），与并发无关，串行机制已移除，恢复统一并发。
+// 取消语义不变：每个角色仍持有自己的 AbortController，取消按钮照常中断在途请求。
+async function runArchiveAnalysisBatch(names) {
+  return Promise.allSettled(names.map((name) => analyzeCharacter(name)));
+}
+
 async function analyzeAllCharacters() {
   const ctx = getContextSafe();
   const roster = ctx ? getRoster(ctx) : {};
@@ -3919,7 +4018,7 @@ async function analyzeAllCharacters() {
     globalThis.toastr?.info?.('已取消全部角色分析', `[${MODULE_NAME}]`);
     return;
   }
-  const results = await Promise.allSettled(names.map((name) => analyzeCharacter(name)));
+  const results = await runArchiveAnalysisBatch(names);
   const counts = { ok: 0, error: 0, cancelled: 0, skipped: 0, busy: 0 };
   for (const result of results) {
     const outcome = result.status === 'fulfilled' ? String(result.value || 'ok') : 'error';
@@ -3973,6 +4072,8 @@ function initArchiveSection(panel) {
   logApp('info', '档案系统已就绪');
 }
 
+
+// ===== js/views-home.js =====
 function refreshHomeStatuses() {
   refreshHomeRegisterStatus();
   refreshHomeArchiveStatus();
@@ -4196,6 +4297,9 @@ async function copyRoundInjectionText() {
     globalThis.toastr?.warning?.('复制失败，请手动选择文本', '[' + MODULE_NAME + ']');
   }
 }
+
+
+// ===== js/message-filters.js =====
 // ---------- 消息正则过滤 ----------
 // 四种调用（档案分析 / 档案预筛 / 角色扮演预筛 / 角色推演）都经 getRecentMessages
 // 取「最近几条消息」，过滤只需在这一处生效：按启用的正则把每条消息内容中匹配的
@@ -4288,6 +4392,9 @@ function getRecentMessages(count) {
   return messages;
 }
 
+
+
+// ===== js/worldbook.js =====
 // ---------- 世界书系统 ----------
 // 触发规则完全交给 SillyTavern：ctx.getWorldInfoPrompt 是酒馆自己的世界书引擎
 // （扫描深度 / 递归扫描 / 概率 / 预算 / 粘性冷却等全部由它决定），本程序只负责
@@ -4900,6 +5007,7 @@ function initWorldBookSection(panel) {
 }
 
 
+// ===== js/archive-analysis.js =====
 function serializeArchiveForPrompt(archive) {
   const fields = {};
   for (const key of ARCHIVE_SCALAR_FIELDS) fields[key] = String(archive.fields[key] || '');
@@ -5096,10 +5204,26 @@ async function requestChatCompletionOnce(apiBase, settings, body, signal) {
       if (nested && typeof nested === 'object') data = nested;
     } catch {}
   }
-  const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text;
+  const choice = data?.choices?.[0];
+  const content = choice?.message?.content ?? choice?.text;
   if (typeof content !== 'string' || !content.trim()) {
+    // deepseek-v4-flash 等带思考能力的模型偶发把最终答案写进 reasoning_content、
+    // content 留空（finish_reason=stop，usage 全部计入 reasoning_tokens）——
+    // 实测回复内容完整可用，直接兜底取用，避免误判「AI 未返回文本内容」。
+    const reasoning = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content : '';
+    if (reasoning.trim()) {
+      logApp('warn', 'AI 回复内容位于 reasoning_content 字段', `${transport} · ${reasoning.length} 字符`);
+      return { content: reasoning, transport };
+    }
     const errorMessage = data?.error?.message ? `: ${data.error.message}` : '';
-    throw createChatError(`AI 未返回文本内容（${transport}）${errorMessage}`, true);
+    // 空内容诊断：DeepSeek 推理模型（deepseek-reasoner）的 max_tokens 预算同时
+    // 包含思维链与最终答案，思考阶段耗尽预算时会返回「200 + content 为空 +
+    // finish_reason=length」，重试无法自愈，必须调大 max_tokens 或改用非推理模型。
+    const finishReason = choice?.finish_reason ? `finish_reason=${choice.finish_reason}` : '';
+    const budgetHint = finishReason === 'length'
+      ? '（疑似思考阶段耗尽输出预算：请调大 max_tokens 或改用非推理模型）'
+      : '';
+    throw createChatError(`AI 未返回文本内容（${transport}）${errorMessage}${finishReason ? `（${finishReason}）` : ''}${budgetHint}`, true);
   }
   return { content, transport };
 }
@@ -5114,6 +5238,9 @@ async function chatCompletion(settings, messages, options = {}) {
     messages,
     stream: false,
     temperature: Number.isFinite(options.temperature) ? options.temperature : 0.2,
+    max_tokens: Number.isFinite(options.maxTokens) && options.maxTokens > 0
+      ? Math.floor(options.maxTokens)
+      : CHAT_COMPLETION_DEFAULT_MAX_TOKENS,
   };
   const maxAttempts = Math.max(1, Math.min(5, Number(options.maxAttempts) > 0 ? Number(options.maxAttempts) : CHAT_COMPLETION_MAX_ATTEMPTS));
   logApp('debug', '发送 AI 对话请求', `${model} · ${isCrossOriginUrl(`${apiBase}/chat/completions`) ? 'host-proxy' : 'direct'}`);
@@ -5311,6 +5438,32 @@ function buildAutoArchiveSignature(message) {
   ].join('|');
 }
 
+// 主生成流程跟踪：防止其他插件自行广播 generationEnded 误触发自动档案维护。
+// 只有「generationStarted → generationEnded」配对、且末条消息确实变化的事件
+// 才视为主聊天生成结束；其他插件（翻译/摘要/续写等）完成自己的 API 调用后
+// 广播 generationEnded 时，没有对应的 generationStarted 或末条未变化，直接跳过。
+const mainGenerationState = {
+  startChatSignature: '',
+};
+
+function onMainGenerationStarted() {
+  const ctx = getContextSafe();
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  const last = chat[chat.length - 1];
+  mainGenerationState.startChatSignature = last ? buildAutoArchiveSignature(last) : '';
+}
+
+function onMainGenerationStopped() {
+  mainGenerationState.startChatSignature = '';
+}
+
+// 切换/加载聊天时清空跟踪：避免「上一轮生成失败残留的签名」在换聊天后被
+// 其他插件的 generationEnded 误用（chatChanged 只在切换/加载聊天时触发，
+// 生成过程中新增/删除消息不会触发，因此不会误清进行中的生成跟踪）。
+function onMainGenerationChatChanged() {
+  mainGenerationState.startChatSignature = '';
+}
+
 // Gate 请求体（v0.9.4 起）按「提示词 → 名单块 → 剧情块 → 输出契约」四段式组织：
 // 1. system 档案预筛提示词；
 // 2. user 名单段：引导消息 + <Registered_Characters> 块（已注册名单，XML 包裹）；
@@ -5396,7 +5549,7 @@ async function runAutoArchiveGate(ctx, settings, names, signature) {
     }
     globalThis.toastr?.info?.(`预筛完成：入选 ${selected.length}/${names.length} 个角色，开始更新档案`, `[${MODULE_NAME}]`);
     // 复用现有逐角色档案分析（含世界书注入与增量更新），并发执行。
-    const results = await Promise.allSettled(selected.map((name) => analyzeCharacter(name)));
+    const results = await runArchiveAnalysisBatch(selected);
     const counts = { ok: 0, error: 0, cancelled: 0, skipped: 0, busy: 0 };
     for (const result of results) {
       const outcome = result.status === 'fulfilled' ? String(result.value || 'ok') : 'error';
@@ -5446,7 +5599,20 @@ async function onAutoArchiveGenerationEnded() {
     logApp('debug', '自动档案维护跳过：末条不是 AI 回复');
     return;
   }
+  // 非主生成流程的 generationEnded（其他插件自行广播）直接跳过：
+  // 只有「generationStarted → generationEnded」配对才视为主聊天生成结束。
+  if (mainGenerationState.startChatSignature === '') {
+    logApp('debug', '自动档案维护跳过：非主生成流程的 generationEnded');
+    return;
+  }
+  const startSignature = mainGenerationState.startChatSignature;
+  mainGenerationState.startChatSignature = '';
   const signature = buildAutoArchiveSignature(lastMessage);
+  // 末条消息与生成开始时一致 → 本轮没有产出新 AI 回复（插件广播/事件重放）。
+  if (signature === startSignature) {
+    logApp('debug', '自动档案维护跳过：末条消息未变化');
+    return;
+  }
   if (autoArchiveState.lastSignature === signature) {
     logApp('debug', '自动档案维护跳过：本轮已处理');
     return;
@@ -5793,7 +5959,7 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
 
 // messageSent 阻塞监听器：返回 Promise，宿主 emit 会 await 它，
 // 从而在推演注入完成前阻止主模型请求；所有分支都必须尽快 resolve。
-async function onNpcDeductionMessageSent() {
+async function onNpcDeductionMessageSent(...args) {
   const ctx = getContextSafe();
   if (!ctx) return;
   let settings;
@@ -5816,6 +5982,14 @@ async function onNpcDeductionMessageSent() {
   const lastMessage = chat[chat.length - 1];
   // 只处理「用户点击发送」产生的新消息；系统消息 / 非用户末条一律放行。
   if (!lastMessage || !lastMessage.is_user) return;
+  // 校验事件载荷与末条消息一致：其他插件自行 emit messageSent 时通常携带自己的
+  // 文本（如 QuickReply 发送、自动回复脚本），与末条消息不一致即可判定为误触发；
+  // 载荷非字符串（宿主格式差异）时无法校验，按原有逻辑放行。
+  const eventText = typeof args?.[0] === 'string' ? String(args[0]).trim() : '';
+  if (eventText && String(lastMessage.mes || '').trim() !== eventText) {
+    logApp('debug', '角色推演跳过：messageSent 载荷与末条消息不一致（疑似其他插件触发）');
+    return;
+  }
   const signature = buildNpcDeductionSignature(lastMessage);
   if (npcDeductionState.running) {
     logApp('debug', '角色推演跳过：上一轮仍在运行（本轮内容已覆盖）');
@@ -5868,6 +6042,8 @@ function installNpcDeductionMessageSentHook(ctx) {
   eventSource.on(eventType, wrapped);
 }
 
+
+// ===== js/main.js =====
 function hasMenuEntry() {
   const menu = document.getElementById('extensionsMenu');
   if (!menu) return false;
@@ -5981,6 +6157,10 @@ function installHostEventSubscriptions(ctx) {
   onHostEvent(ctx, 'chatChanged', onFloorTraceChatChanged, FLOOR_TRACE_CHAT_HANDLER_KEY);
   onHostEvent(ctx, 'groupSelected', onFloorTraceChatChanged, FLOOR_TRACE_GROUP_HANDLER_KEY);
   onHostEvent(ctx, 'messageDeleted', onFloorTraceMessageDeleted, FLOOR_TRACE_DELETE_HANDLER_KEY);
+  onHostEvent(ctx, 'generationStarted', onMainGenerationStarted, MAIN_GENERATION_STARTED_HANDLER_KEY);
+  onHostEvent(ctx, 'generationStopped', onMainGenerationStopped, MAIN_GENERATION_STOPPED_HANDLER_KEY);
+  onHostEvent(ctx, 'chatChanged', onMainGenerationChatChanged, MAIN_GENERATION_CHAT_CHANGED_HANDLER_KEY);
+  onHostEvent(ctx, 'groupSelected', onMainGenerationChatChanged, MAIN_GENERATION_GROUP_SELECTED_HANDLER_KEY);
   onHostEvent(ctx, 'generationEnded', onAutoArchiveGenerationEnded, AUTO_ARCHIVE_END_HANDLER_KEY);
   onHostEvent(ctx, 'generationEnded', onNpcDeductionGenerationCleanup, NPC_CLEANUP_END_HANDLER_KEY);
   onHostEvent(ctx, 'generationStopped', onNpcDeductionGenerationCleanup, NPC_CLEANUP_STOP_HANDLER_KEY);
@@ -6048,7 +6228,4 @@ function scheduleBootstrapFallback(retries = BOOTSTRAP_RETRY_COUNT) {
   attempt();
 }
 scheduleBootstrapFallback();
-
-
-
 
