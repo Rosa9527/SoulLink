@@ -157,15 +157,16 @@ function getSettings(ctx) {
       shouldSave = true;
       console.warn(`[${MODULE_NAME}] 提示词「角色扮演预筛」已升级为 v1.0.8 新默认（在场受影响角色必选 + 戏份排序上限）`);
     } else if (key === 'roleplaySystem'
-      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V3 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V4 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V5)) {
+      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V3 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V4 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V5 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V6)) {
       // v0.9.1 起整体重写（口吻/三要素/认知状态 + 风格示例），v0.9.2 起输入结构改为
       // <Character_Profile> 档案块 + <Recent_Messages> 剧情块分段注入；v1.0.8 起行为倾向推演重构
       // （推演流程 / 行动倾向具体化 / 质量红线 / 双示例）；v1.0.10 起改为
-      // 「玩家已行动、聚焦反应」措辞（不再以推测玩家下一步为主任务）；只有未自定义过
+      // 「玩家已行动、聚焦反应」措辞（不再以推测玩家下一步为主任务）；v1.0.13 起措辞收尾修正
+      // （术语统一 / 去重复 / 示例去总结腔 / 输入说明明确触发点）；只有未自定义过
       // （与任一旧版默认逐字一致）才自动升级。
       prompts[key] = value;
       shouldSave = true;
-      console.warn(`[${MODULE_NAME}] 提示词「角色扮演」已升级为 v1.0.10 新默认（玩家已行动、聚焦反应：行动倾向改为对玩家行为的即时回应）`);
+      console.warn(`[${MODULE_NAME}] 提示词「角色扮演」已升级为 v1.0.13 新默认（措辞收尾修正：术语统一 / 去重复 / 示例去总结腔 / 输入说明明确触发点）`);
     } else if (key === 'archiveSystem' && (prompts[key] === LEGACY_DEFAULT_ARCHIVE_SYSTEM || prompts[key] === LEGACY_DEFAULT_ARCHIVE_SYSTEM_V2)) {
       // v0.9.5 起「档案系统」默认提示词输出契约前置并强化 JSON 格式要求；只有未自定义过才自动升级。
       prompts[key] = value;
