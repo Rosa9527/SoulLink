@@ -470,8 +470,8 @@ function buildAutoArchiveGateMessages(names, prompt) {
     {
       role: 'user',
       content: [
-        '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单。',
-        '预筛只能从这份名单中挑选角色：名单之外的角色一律视为未注册、不参与本轮预筛。',
+        '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单，这是唯一的候选集。',
+        '只从这份名单中挑选：名单之外的角色（即使出现在对话里）一律不列入。',
         `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
       ].join('\n'),
     },
@@ -479,14 +479,14 @@ function buildAutoArchiveGateMessages(names, prompt) {
       role: 'user',
       content: [
         `以下被 <Recent_Messages>...</Recent_Messages> 包裹的是当前场景的最新 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条消息（含各角色在场与不在场的段落）。`,
-        '请据此判断哪些角色本轮确实获得了新信息、新经历，或关系、背景发生了值得记录的变动；',
+        '请据此判断名单中哪些角色本轮确实获得了新信息、新经历，或关系、背景出现了值得记录的新内容；只从名单中挑选，名单外的角色一律忽略。',
         '有实际出场并参与互动、或在场获知了重要信息的角色通常就有新记忆可记录，只有完全没有出场或确实无新信息的角色才不列入。',
         `<Recent_Messages>\n${JSON.stringify(recentMessages)}\n</Recent_Messages>`,
       ].join('\n'),
     },
     {
       role: 'user',
-      content: `请按约定输出 JSON，只列出本轮信息或记忆确实会变化的角色：\n\n${JSON.stringify({ characters: [] })}`,
+      content: `请按约定输出 JSON，只从名单中列出本轮确实有值得记录内容的角色：\n\n${JSON.stringify({ characters: [] })}`,
     },
   ];
 }
@@ -696,8 +696,8 @@ function buildNpcDeductionGateMessages(names, prompt) {
     {
       role: 'user',
       content: [
-        '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单。',
-        '预筛只能从这份名单中挑选角色：名单之外的角色一律视为未注册、不参与本轮预筛。',
+        '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单，这是唯一的候选集。',
+        '只从这份名单中挑选：名单之外的角色（即使出现在对话里）一律不列入。',
         `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
       ].join('\n'),
     },
@@ -705,7 +705,7 @@ function buildNpcDeductionGateMessages(names, prompt) {
       role: 'user',
       content: [
         `以下被 <Recent_Messages>...</Recent_Messages> 包裹的是当前场景的最新 ${NPC_DEDUCTION_RECENT_COUNT} 条消息（含各角色在场与不在场的段落）。`,
-        '请据此判断哪些角色本轮会开口、被直接点名、明显有戏份，或在场且受到本轮事件直接影响；',
+        '请据此逐个判断名单中的角色：谁本轮会开口、被直接点名、明显有戏份，或在场且受到本轮事件直接影响；',
         '若最后一条用户消息未点名任何人，以在场角色的情绪积累与行动意图为准；',
         '只是被提及、明确不在场或纯属背景的角色不要列入。',
         `<Recent_Messages>\n${JSON.stringify(recentMessages)}\n</Recent_Messages>`,
@@ -713,7 +713,7 @@ function buildNpcDeductionGateMessages(names, prompt) {
     },
     {
       role: 'user',
-      content: `请按约定输出 JSON，只列出本轮会开口、行动或有重要内心反应的角色：\n\n${JSON.stringify({ characters: [] })}`,
+      content: `请按约定输出 JSON，只从名单中列出本轮会开口、行动或有重要内心反应的角色：\n\n${JSON.stringify({ characters: [] })}`,
     },
   ];
 }
