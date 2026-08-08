@@ -680,16 +680,17 @@ function buildNpcDeductionSignature(message) {
   ].join('|');
 }
 
-// Gate 请求体（v0.9.3 起）按「提示词 → 名单块 → 剧情块 → 输出契约」四段式组织：
+// Gate 请求体（v1.0.12 起精简为 4 条消息）按「提示词 → 名单块 → 剧情块 → 输出契约」组织：
 // 1. system 角色扮演预筛提示词；
-// 2. user 名单段：引导消息 + <Registered_Characters> 块（已注册名单，XML 包裹）；
-// 3. user 剧情段：引导消息 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
+// 2. user 名单段：引导 + <Registered_Characters> 块（已注册名单，XML 包裹）；
+// 3. user 剧情段：引导 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
 // 4. user 输出契约段：约定 JSON 模板。
 // 与「角色扮演预筛」默认提示词的输入说明保持一致，recent_messages 严格取最近 4 条；
-// 刻意不携带档案、世界书等任何其他上下文。
+// 刻意不携带档案、世界书等任何其他上下文。v1.0.12 起引导与数据块合并为同一条消息、
+// JSON 紧凑序列化（省缩进 token），减少消息轮次与输入体积，加快 Gate 返回。
 function buildNpcDeductionGateMessages(names, prompt) {
   const recentMessages = getRecentMessages(NPC_DEDUCTION_RECENT_COUNT);
-  const namesText = JSON.stringify(names, null, 2);
+  const namesText = JSON.stringify(names);
   return [
     { role: 'system', content: prompt },
     {
@@ -697,11 +698,8 @@ function buildNpcDeductionGateMessages(names, prompt) {
       content: [
         '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单。',
         '预筛只能从这份名单中挑选角色：名单之外的角色一律视为未注册、不参与本轮预筛。',
+        `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
       ].join('\n'),
-    },
-    {
-      role: 'user',
-      content: `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
     },
     {
       role: 'user',
@@ -710,11 +708,8 @@ function buildNpcDeductionGateMessages(names, prompt) {
         '请据此判断哪些角色本轮会开口、被直接点名、明显有戏份，或在场且受到本轮事件直接影响；',
         '若最后一条用户消息未点名任何人，以在场角色的情绪积累与行动意图为准；',
         '只是被提及、明确不在场或纯属背景的角色不要列入。',
+        `<Recent_Messages>\n${JSON.stringify(recentMessages)}\n</Recent_Messages>`,
       ].join('\n'),
-    },
-    {
-      role: 'user',
-      content: `<Recent_Messages>\n${JSON.stringify(recentMessages, null, 2)}\n</Recent_Messages>`,
     },
     {
       role: 'user',

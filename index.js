@@ -1,6 +1,6 @@
 // ===== js/constants.js =====
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.0.11';
+const MODULE_VERSION = '1.0.12';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
@@ -447,10 +447,11 @@ const DEFAULT_PROMPTS = Object.freeze({
 - 其中 memory（记忆）分节是该角色记得的亲身经历与感受，扮演时必须自然引用：它决定该角色记得什么、对谁有旧情或旧怨、为何对眼前的人与事抱有此态度；不得忘记记忆分节中已记录的事，也不得凭空记得未记录的事。
 - 被 <Recent_Messages> 标签包裹的是当前场景的最新消息，可能包含该角色不在场的段落——先判定 TA 是否在场、能听到看到什么，据此判断该角色当下真实能获知什么。`,
   roleplayPreScreen: `你是角色扮演预筛裁判，职责是判断「最后一条用户消息引发的下一轮剧情」中，哪些已注册角色会开口、行动或产生重要内心反应，只输出 JSON 名单。
+这是高频轻量调用，必须最快返回：不要输出分析过程、不要解释、不要任何多余文字，回复越短越好。
 你作为子 agent，请直接给出结论，不要输出思考过程或多余说明。
 
 【输出契约（最高优先级，先读这里）】
-- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字。
+- 你的回复必须且只能是一个 JSON 对象，禁止输出任何其他内容：不要 Markdown、不要 \`\`\`json 代码块标记、不要解释、不要前后缀文字；回复越短越好。
 - 结构必须是：{ "characters": ["角色名", ...] }
 - characters 只能从 <Registered_Characters> 名单中挑选，角色名必须与名单逐字一致：即使对话里用简称或昵称（如「纱雾」），也必须输出名单中的全名（如「和泉纱雾」）；不得改名、缩写或加任何修饰，程序按名字精确匹配，写错名字的角色会被丢弃。
 - 本轮无人有戏份时返回空数组：{ "characters": [] }
@@ -466,9 +467,9 @@ const DEFAULT_PROMPTS = Object.freeze({
 - 被直接点名包括作为动作对象（被抱起、放下、触碰、呼唤、喂食等）——只要角色被点名或与主角有直接互动，就视为有戏份，必须列入。
 - 应列入：在场且受到本轮事件直接影响、或很可能产生重要内心反应的角色——例如目击了冲突、秘密或重大消息，被事件波及，情绪被触发，或近期消息中已表现出行动意图与情绪积累、本轮可能爆发或行动的角色。这类角色即使本轮不开口，其内心状态也决定下一轮剧情走向。
 - 不列入：只是被顺带提及、不在场、或在场但纯属背景（不会反应、不会行动）的角色。
-- 在场是硬性前提：明确不在场（已离开、在别处、被提及在远方）的角色不列入；最近消息未明确其去向时，按最近一次出场推断——最近一次出场在场景中且无离开记录，视为仍在场。不在场角色获得独白会误导主模型，比漏选更伤。
+- 在场是硬性前提：明确不在场（已离开、在别处、被提及在远方）的角色不列入；最近消息未明确其去向时，按最近一次出场推断——最近一次出场在场景中且无离开记录，视为仍在场。不在场角色获得独白会误导主模型，宁可漏选也不可错选不在场角色。
 - 若入选角色较多，按戏份轻重排序，最多保留 6 个戏份最重的角色；戏份轻重依次看：与最后一条用户消息的直接关联（被点名/被涉及/直接互动）→ 情绪积累与行动意图的强度 → 在场互动频率。
-- 拿不准时倾向列入：漏选一个真正有戏份的角色，比多选一个浪费一次推演更伤体验。`,
+- 拿不准是否有戏份时倾向列入：漏选一个真正有戏份的角色，比多选一个浪费一次推演更伤体验。`,
 });
 
 // v0.9.0 及更早的「角色扮演」默认提示词（无口吻/三要素硬要求，无风格示例）。
@@ -5829,16 +5830,17 @@ function buildNpcDeductionSignature(message) {
   ].join('|');
 }
 
-// Gate 请求体（v0.9.3 起）按「提示词 → 名单块 → 剧情块 → 输出契约」四段式组织：
+// Gate 请求体（v1.0.12 起精简为 4 条消息）按「提示词 → 名单块 → 剧情块 → 输出契约」组织：
 // 1. system 角色扮演预筛提示词；
-// 2. user 名单段：引导消息 + <Registered_Characters> 块（已注册名单，XML 包裹）；
-// 3. user 剧情段：引导消息 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
+// 2. user 名单段：引导 + <Registered_Characters> 块（已注册名单，XML 包裹）；
+// 3. user 剧情段：引导 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
 // 4. user 输出契约段：约定 JSON 模板。
 // 与「角色扮演预筛」默认提示词的输入说明保持一致，recent_messages 严格取最近 4 条；
-// 刻意不携带档案、世界书等任何其他上下文。
+// 刻意不携带档案、世界书等任何其他上下文。v1.0.12 起引导与数据块合并为同一条消息、
+// JSON 紧凑序列化（省缩进 token），减少消息轮次与输入体积，加快 Gate 返回。
 function buildNpcDeductionGateMessages(names, prompt) {
   const recentMessages = getRecentMessages(NPC_DEDUCTION_RECENT_COUNT);
-  const namesText = JSON.stringify(names, null, 2);
+  const namesText = JSON.stringify(names);
   return [
     { role: 'system', content: prompt },
     {
@@ -5846,11 +5848,8 @@ function buildNpcDeductionGateMessages(names, prompt) {
       content: [
         '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单。',
         '预筛只能从这份名单中挑选角色：名单之外的角色一律视为未注册、不参与本轮预筛。',
+        `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
       ].join('\n'),
-    },
-    {
-      role: 'user',
-      content: `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
     },
     {
       role: 'user',
@@ -5859,11 +5858,8 @@ function buildNpcDeductionGateMessages(names, prompt) {
         '请据此判断哪些角色本轮会开口、被直接点名、明显有戏份，或在场且受到本轮事件直接影响；',
         '若最后一条用户消息未点名任何人，以在场角色的情绪积累与行动意图为准；',
         '只是被提及、明确不在场或纯属背景的角色不要列入。',
+        `<Recent_Messages>\n${JSON.stringify(recentMessages)}\n</Recent_Messages>`,
       ].join('\n'),
-    },
-    {
-      role: 'user',
-      content: `<Recent_Messages>\n${JSON.stringify(recentMessages, null, 2)}\n</Recent_Messages>`,
     },
     {
       role: 'user',
