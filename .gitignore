@@ -8,3 +8,7 @@ npm-debug.log*
 # 构建产物缓存 / 临时文件
 *.tmp
 *.log
+
+# 一次性修补脚本 / 临时快照文本（开发产物，不上传）
+_apply.js
+_v2block.txt

@@ -767,6 +767,10 @@ function createPanel() {
             <p class="soullink-round__note">展示最近一轮「发送前角色推演」的结果：预筛入选、各角色内心独白，以及最终注入 SillyTavern 的提示词原文。</p>
             <div id="${ROUND_SUMMARY_ID}" class="soullink-round__summary" hidden></div>
             <div id="${ROUND_EMPTY_ID}" class="soullink-round__empty" hidden>还没有推演记录：开启「🎭 前置推演」并发送消息后，这里会展示最近一轮的结果。</div>
+            <div class="soullink-round__gate-head" hidden>
+              <span class="soullink-panel__section-title">预筛原文（Gate 返回）</span>
+            </div>
+            <pre id="${ROUND_GATE_TEXT_ID}" class="soullink-round__gate-text" hidden></pre>
             <div class="soullink-round__characters-head" hidden>
               <span class="soullink-panel__section-title">角色内心独白</span>
             </div>

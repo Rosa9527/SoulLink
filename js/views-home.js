@@ -167,14 +167,18 @@ function buildRoundCharacterCard(item) {
 function renderRoundView() {
   const summary = document.getElementById(ROUND_SUMMARY_ID);
   const empty = document.getElementById(ROUND_EMPTY_ID);
+  const gateHead = document.querySelector('.soullink-round__gate-head');
+  const gateText = document.getElementById(ROUND_GATE_TEXT_ID);
   const charactersHead = document.querySelector('.soullink-round__characters-head');
   const characters = document.getElementById(ROUND_CHARACTERS_ID);
   const injectHead = document.querySelector('.soullink-round__inject-head');
   const injectText = document.getElementById(ROUND_INJECT_TEXT_ID);
-  if (!summary || !empty || !charactersHead || !characters || !injectHead || !injectText) return;
+  if (!summary || !empty || !gateHead || !gateText || !charactersHead || !characters || !injectHead || !injectText) return;
   const round = npcDeductionLastRound;
   if (!round) {
     summary.hidden = true;
+    gateHead.hidden = true;
+    gateText.hidden = true;
     charactersHead.hidden = true;
     characters.hidden = true;
     injectHead.hidden = true;
@@ -186,6 +190,10 @@ function renderRoundView() {
   summary.hidden = false;
   summary.textContent = '';
   summary.appendChild(buildRoundSummary(round));
+  const hasGateRaw = Boolean(round.gateRaw);
+  gateHead.hidden = !hasGateRaw;
+  gateText.hidden = !hasGateRaw;
+  gateText.textContent = round.gateRaw || '';
   const hasCharacters = round.characters.length > 0;
   charactersHead.hidden = !hasCharacters;
   characters.hidden = !hasCharacters;

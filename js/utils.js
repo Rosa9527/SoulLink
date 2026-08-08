@@ -143,28 +143,30 @@ function getSettings(ctx) {
         prompts[key] = value;
         shouldSave = true;
       } else if (key === 'archivePreScreen'
-      && (prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V2 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V3 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V4)) {
+      && (prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V2 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V3 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V4 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V5 || prompts[key] === LEGACY_DEFAULT_ARCHIVE_PRESCREEN_V6)) {
       // v0.9.4 起「档案预筛」默认提示词输入说明同步为 <Registered_Characters> / <Recent_Messages>
       // 两个标签块（请求体已分段注入）；只有未自定义过（与旧默认逐字一致）才自动升级。
       prompts[key] = value;
       shouldSave = true;
-      console.warn(`[${MODULE_NAME}] 提示词「档案预筛」已升级为 v0.9.8 新默认（日常互动也算新记忆）`);
+      console.warn(`[${MODULE_NAME}] 提示词「档案预筛」已升级为 v1.0.9 新默认（最快返回 + 在场目击/信息补充必选，附和寒暄不列入）`);
     } else if (key === 'roleplayPreScreen'
-      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V3)) {
+      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V3 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_PRESCREEN_V4)) {
       // v0.9.3 起「角色扮演预筛」默认提示词输入说明同步为 <Registered_Characters> / <Recent_Messages>
       // 两个标签块（请求体已分段注入）；只有未自定义过（与旧默认逐字一致）才自动升级。
       prompts[key] = value;
       shouldSave = true;
-      console.warn(`[${MODULE_NAME}] 提示词「角色扮演预筛」已升级为 v0.9.6 新默认（全名输出 + 动作对象必选）`);
+      console.warn(`[${MODULE_NAME}] 提示词「角色扮演预筛」已升级为 v1.0.8 新默认（在场受影响角色必选 + 戏份排序上限）`);
     } else if (key === 'roleplaySystem'
-      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V3)) {
+      && (prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V2 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V3 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V4 || prompts[key] === LEGACY_DEFAULT_ROLEPLAY_SYSTEM_V5)) {
       // v0.9.1 起整体重写（口吻/三要素/认知状态 + 风格示例），v0.9.2 起输入结构改为
-      // <Character_Profile> 档案块 + <Recent_Messages> 剧情块分段注入；只有未自定义过
+      // <Character_Profile> 档案块 + <Recent_Messages> 剧情块分段注入；v1.0.8 起行为倾向推演重构
+      // （推演流程 / 行动倾向具体化 / 质量红线 / 双示例）；v1.0.10 起改为
+      // 「玩家已行动、聚焦反应」措辞（不再以推测玩家下一步为主任务）；只有未自定义过
       // （与任一旧版默认逐字一致）才自动升级。
       prompts[key] = value;
       shouldSave = true;
-      console.warn(`[${MODULE_NAME}] 提示词「角色扮演」已升级为 v0.9.5 新默认（输出契约前置 + JSON 格式强化）`);
-    } else if (key === 'archiveSystem' && prompts[key] === LEGACY_DEFAULT_ARCHIVE_SYSTEM) {
+      console.warn(`[${MODULE_NAME}] 提示词「角色扮演」已升级为 v1.0.10 新默认（玩家已行动、聚焦反应：行动倾向改为对玩家行为的即时回应）`);
+    } else if (key === 'archiveSystem' && (prompts[key] === LEGACY_DEFAULT_ARCHIVE_SYSTEM || prompts[key] === LEGACY_DEFAULT_ARCHIVE_SYSTEM_V2)) {
       // v0.9.5 起「档案系统」默认提示词输出契约前置并强化 JSON 格式要求；只有未自定义过才自动升级。
       prompts[key] = value;
       shouldSave = true;

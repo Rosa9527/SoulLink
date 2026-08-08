@@ -886,6 +886,7 @@ select.soullink-input {
 }
 
 .soullink-round__characters-head,
+.soullink-round__gate-head,
 .soullink-round__inject-head {
   display: flex;
   align-items: center;
@@ -942,7 +943,8 @@ select.soullink-input {
   overflow-y: auto;
 }
 
-.soullink-round__inject-text {
+.soullink-round__inject-text,
+.soullink-round__gate-text {
   margin: 0;
   padding: 10px 12px;
   max-height: 260px;

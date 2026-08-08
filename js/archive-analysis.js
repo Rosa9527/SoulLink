@@ -454,16 +454,17 @@ function onMainGenerationChatChanged() {
   mainGenerationState.startChatSignature = '';
 }
 
-// Gate 请求体（v0.9.4 起）按「提示词 → 名单块 → 剧情块 → 输出契约」四段式组织：
+// Gate 请求体（v1.0.9 起精简为 4 条消息）按「提示词 → 名单块 → 剧情块 → 输出契约」组织：
 // 1. system 档案预筛提示词；
-// 2. user 名单段：引导消息 + <Registered_Characters> 块（已注册名单，XML 包裹）；
-// 3. user 剧情段：引导消息 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
+// 2. user 名单段：引导 + <Registered_Characters> 块（已注册名单，XML 包裹）；
+// 3. user 剧情段：引导 + <Recent_Messages> 块（最近 4 条消息，XML 包裹）；
 // 4. user 输出契约段：约定 JSON 模板。
 // 与「档案预筛」默认提示词的输入说明保持一致，recent_messages 严格取最近 4 条；
-// 刻意不携带档案、世界书等任何其他上下文。
+// 刻意不携带档案、世界书等任何其他上下文。v1.0.9 起引导与数据块合并为同一条消息、
+// JSON 紧凑序列化（省缩进 token），减少消息轮次与输入体积，加快 Gate 返回。
 function buildAutoArchiveGateMessages(names, prompt) {
   const recentMessages = getRecentMessages(ARCHIVE_RECENT_MESSAGE_COUNT);
-  const namesText = JSON.stringify(names, null, 2);
+  const namesText = JSON.stringify(names);
   return [
     { role: 'system', content: prompt },
     {
@@ -471,23 +472,17 @@ function buildAutoArchiveGateMessages(names, prompt) {
       content: [
         '以下被 <Registered_Characters>...</Registered_Characters> 包裹的是当前全部已注册角色名单。',
         '预筛只能从这份名单中挑选角色：名单之外的角色一律视为未注册、不参与本轮预筛。',
+        `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
       ].join('\n'),
-    },
-    {
-      role: 'user',
-      content: `<Registered_Characters>\n${namesText}\n</Registered_Characters>`,
     },
     {
       role: 'user',
       content: [
         `以下被 <Recent_Messages>...</Recent_Messages> 包裹的是当前场景的最新 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条消息（含各角色在场与不在场的段落）。`,
         '请据此判断哪些角色本轮确实获得了新信息、新经历，或关系、背景发生了值得记录的变动；',
-        '有实际出场并参与互动的角色通常就有新记忆可记录，只有完全没有出场或确实无新信息的角色才不列入。',
+        '有实际出场并参与互动、或在场获知了重要信息的角色通常就有新记忆可记录，只有完全没有出场或确实无新信息的角色才不列入。',
+        `<Recent_Messages>\n${JSON.stringify(recentMessages)}\n</Recent_Messages>`,
       ].join('\n'),
-    },
-    {
-      role: 'user',
-      content: `<Recent_Messages>\n${JSON.stringify(recentMessages, null, 2)}\n</Recent_Messages>`,
     },
     {
       role: 'user',
@@ -528,7 +523,9 @@ async function runAutoArchiveGate(ctx, settings, names, signature) {
     const messages = buildAutoArchiveGateMessages(names, prompt);
     logApp('info', '自动档案维护：预筛开始', `${names.length} 个已注册角色`);
     globalThis.toastr?.info?.('档案预筛中…', `[${MODULE_NAME}]`);
-    const content = await chatCompletion(settings, messages);
+    // Gate 只产出角色名单，输出量小：限制 maxTokens 并降低 temperature，
+    // 避免模型长篇输出拖慢高频调用，同时保持判定确定性。
+    const content = await chatCompletion(settings, messages, { maxTokens: 1024, temperature: 0.1 });
     const parsed = parseAgentJson(content);
     const selected = parseGateCharacterNames(parsed, names);
     logApp('info', '自动档案维护：预筛完成', `入选 ${selected.length}/${names.length} 个角色`, selected);
@@ -710,8 +707,9 @@ function buildNpcDeductionGateMessages(names, prompt) {
       role: 'user',
       content: [
         `以下被 <Recent_Messages>...</Recent_Messages> 包裹的是当前场景的最新 ${NPC_DEDUCTION_RECENT_COUNT} 条消息（含各角色在场与不在场的段落）。`,
-        '请据此判断哪些角色本轮会开口、被直接点名或明显有戏份；',
-        '只是被提及但不需要开口或参与的角色不要列入。',
+        '请据此判断哪些角色本轮会开口、被直接点名、明显有戏份，或在场且受到本轮事件直接影响；',
+        '若最后一条用户消息未点名任何人，以在场角色的情绪积累与行动意图为准；',
+        '只是被提及、明确不在场或纯属背景的角色不要列入。',
       ].join('\n'),
     },
     {
@@ -720,7 +718,7 @@ function buildNpcDeductionGateMessages(names, prompt) {
     },
     {
       role: 'user',
-      content: `请按约定输出 JSON，只列出本轮会开口或有戏份的角色：\n\n${JSON.stringify({ characters: [] })}`,
+      content: `请按约定输出 JSON，只列出本轮会开口、行动或有重要内心反应的角色：\n\n${JSON.stringify({ characters: [] })}`,
     },
   ];
 }
@@ -804,7 +802,7 @@ function looksLikeNonMonologue(text) {
 function buildNpcDeductionInjectionText(results) {
   const lines = [
     '<NPC_Deduction>',
-    '# **扮演指令**：以下是各角色在下一轮剧情中的心理状态与行为倾向（由子 agent 推演）。请把这些状态当作各角色当下的真实内心，内化为它们的行为依据并自然融入接下来的剧情与对白——务必遵循，但不要在正文中复述或引用本段原文。',
+    '# **扮演指令**：以下是各角色在下一轮剧情中的心理状态与行为倾向（由子 agent 推演）。请把这些状态当作各角色当下的真实内心，内化为它们的行为依据并自然融入接下来的剧情与对白——务必遵循，但不要在正文中复述或引用本段原文。每个角色的独白只属于 TA 自己，不得互相套用或张冠李戴；若独白与该角色既定的设定或剧情事实冲突，以设定与剧情为准。',
   ];
   for (const result of results) {
     lines.push(`<character name="${result.name}">`);
@@ -850,6 +848,7 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
     durationMs: 0,
     gateTotal: names.length,
     gateSelected: [],
+    gateRaw: '',
     okNames: [],
     failedNames: [],
     skippedNames: [],
@@ -883,9 +882,12 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
     }
     logApp('info', '角色推演：Gate 预筛开始', `${names.length} 个已注册角色`);
     const gateMessages = buildNpcDeductionGateMessages(names, gatePrompt);
-    const gateContent = await chatCompletion(settings, gateMessages, { signal: controller.signal });
+    // Gate 只产出角色名单，输出量小：限制 maxTokens 并降低 temperature，
+    // 避免模型长篇输出拖慢发送前阻塞链路，同时保持判定确定性（与自动档案 Gate 一致）。
+    const gateContent = await chatCompletion(settings, gateMessages, { signal: controller.signal, maxTokens: 1024, temperature: 0.1 });
     const selected = parseGateCharacterNames(parseAgentJson(gateContent), names);
     record.gateSelected = selected;
+    record.gateRaw = String(gateContent || '').slice(0, 400);
     logApp('info', '角色推演：Gate 预筛完成', `入选 ${selected.length}/${names.length} 个角色`, selected);
     if (selected.length === 0) {
       logApp('warn', '角色推演：Gate 预筛 0 入选，原文', String(gateContent || '').slice(0, 400));
