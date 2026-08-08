@@ -418,6 +418,9 @@ let worldBookLastSummary = null;
 // 每本书的搜索词：渲染会整体重建 DOM，搜索词单独保存，排除勾选/刷新后不丢。
 const worldBookSearchQueries = new Map();
 
+// 每本书的折叠状态：渲染会整体重建 DOM，折叠状态单独保存，刷新后不丢。
+const worldBookCollapsedBooks = new Set();
+
 // 条目显示排序：常驻 → 本次触发 → 未触发（可触发）→ 禁用（根本不会被激活）。
 // 与酒馆编辑器的 priority 排序（常驻→普通→禁用）一致，普通档内再按「本次触发」优先；
 // 禁用条目即使标了常驻也排最后——酒馆扫描时 disable 检查先于 constant，禁用条目永远不会激活。
@@ -526,13 +529,37 @@ async function renderWorldBookList() {
     const count = document.createElement('span');
     count.className = 'soullink-worldbook__book-count';
     count.textContent = `${entries.length} 条`;
-    head.append(title, count);
+    const collapse = document.createElement('button');
+    collapse.type = 'button';
+    collapse.className = 'soullink-worldbook__collapse';
+    collapse.title = '折叠 / 展开本书';
+    collapse.setAttribute('aria-expanded', 'true');
+    collapse.textContent = '▾';
+    head.append(title, count, collapse);
     section.appendChild(head);
+    const body = document.createElement('div');
+    body.className = 'soullink-worldbook__book-body';
+    section.appendChild(body);
+    const collapsed = worldBookCollapsedBooks.has(bookName);
+    if (collapsed) {
+      section.classList.add('is-collapsed');
+      collapse.textContent = '▸';
+      collapse.setAttribute('aria-expanded', 'false');
+      body.hidden = true;
+    }
+    collapse.addEventListener('click', () => {
+      const nowCollapsed = section.classList.toggle('is-collapsed');
+      collapse.textContent = nowCollapsed ? '▸' : '▾';
+      collapse.setAttribute('aria-expanded', String(!nowCollapsed));
+      body.hidden = nowCollapsed;
+      if (nowCollapsed) worldBookCollapsedBooks.add(bookName);
+      else worldBookCollapsedBooks.delete(bookName);
+    });
     if (entries.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'soullink-worldbook__book-empty';
       empty.textContent = '（无法读取该书的条目）';
-      section.appendChild(empty);
+      body.appendChild(empty);
       fragment.appendChild(section);
       continue;
     }
@@ -552,7 +579,7 @@ async function renderWorldBookList() {
       else worldBookSearchQueries.delete(bookName);
       applyWorldBookSearch(section, query);
     });
-    section.appendChild(searchInput);
+    body.appendChild(searchInput);
     for (const entry of entries) {
       const key = worldInfoEntryKey(entry.world, entry.uid);
       const excluded = excludedKeys.has(key);
@@ -588,14 +615,17 @@ async function renderWorldBookList() {
       if (excluded) badges.appendChild(buildWorldBookBadge('已排除', 'is-excluded'));
       textWrap.append(name, badges);
       row.append(checkbox, textWrap);
-      section.appendChild(row);
+      body.appendChild(row);
     }
     applyWorldBookSearch(section, worldBookSearchQueries.get(bookName) || '');
     fragment.appendChild(section);
   }
-  // 清理已不在当前激活列表里的书的搜索词。
+  // 清理已不在当前激活列表里的书的搜索词与折叠状态。
   for (const key of Array.from(worldBookSearchQueries.keys())) {
     if (!bookNames.has(key)) worldBookSearchQueries.delete(key);
+  }
+  for (const key of Array.from(worldBookCollapsedBooks)) {
+    if (!bookNames.has(key)) worldBookCollapsedBooks.delete(key);
   }
   list.appendChild(fragment);
 }
