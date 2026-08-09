@@ -58,12 +58,12 @@ async function connectAndLoadModels(ctx) {
     const modelInput = document.getElementById(API_MODEL_ID);
     if (modelInput) modelInput.value = settings.model;
     setApiStatus(`已连接，拉取到 ${models.length} 个模型`, 'ok');
-    globalThis.toastr?.success?.(`[${MODULE_NAME}] 已拉取 ${models.length} 个模型`);
+    globalThis.toastr?.success?.(`API 已拉取 ${models.length} 个模型`, `[${MODULE_NAME}]`);
   } catch (error) {
     console.error(`[${MODULE_NAME}] connectAndLoadModels failed`, error);
     const message = String(error?.message || error);
     setApiStatus(message, 'error');
-    globalThis.toastr?.error?.(message, `[${MODULE_NAME}]`);
+    globalThis.toastr?.error?.(`API 连接失败：${message}`, `[${MODULE_NAME}]`);
   } finally {
     if (button) button.disabled = false;
     refreshHomeApiStatus();
@@ -97,7 +97,7 @@ function toggleApiConcurrency() {
   saveSettingsImmediate(ctx);
   renderApiConcurrencyControl();
   logApp('info', settings.apiConcurrencyEnabled ? '并发限制已开启' : '并发限制已关闭');
-  globalThis.toastr?.info?.(`并发限制已${settings.apiConcurrencyEnabled ? '开启' : '关闭'}`, `[${MODULE_NAME}]`);
+  globalThis.toastr?.info?.(`API 并发限制已${settings.apiConcurrencyEnabled ? '开启' : '关闭'}`, `[${MODULE_NAME}]`);
 }
 
 function clampApiConcurrencyLimit(value) {

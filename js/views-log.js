@@ -780,7 +780,7 @@ function initLogView(panel) {
       }
       globalThis.toastr?.success?.(`已复制 ${logEntries.length} 条日志`, `[${MODULE_NAME}]`);
     } catch (error) {
-      globalThis.toastr?.error?.(`复制失败: ${error?.message || error}`, `[${MODULE_NAME}]`);
+      globalThis.toastr?.error?.(`日志复制失败：${error?.message || error}`, `[${MODULE_NAME}]`);
     }
   });
 
@@ -826,7 +826,7 @@ function initLogView(panel) {
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     if (fullBodyCaptures.length === 0) {
-      globalThis.toastr?.warning?.('暂无完整请求体（触发一次对话请求后自动捕获）', `[${MODULE_NAME}]`);
+      globalThis.toastr?.warning?.('暂无完整请求体可导出（触发一次对话请求后自动捕获）', `[${MODULE_NAME}]`);
     } else {
       globalThis.toastr?.success?.(`已导出最近 ${fullBodyCaptures.length} 次完整请求体（JSON 文件）`, `[${MODULE_NAME}]`);
     }

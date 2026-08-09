@@ -1,6 +1,8 @@
 // ---------- 注册系统与档案系统：数据模型 ----------
 const archiveAnalysisState = {}; // 角色名 -> { state: 'idle'|'busy'|'ok'|'error', message, detail }
 const archiveEditState = {};     // 角色名 -> true（处于编辑态）
+const archiveCollapsedState = {}; // 角色名 -> true（处于折叠态）
+const archiveRefineState = {};     // 角色名 -> { state: 'idle'|'busy'|'ok'|'error', message, detail }
 
 function getCurrentChatKey(ctx) {
   if (!ctx) return ARCHIVE_DEFAULT_KEY;
@@ -240,19 +242,19 @@ function registerCharacter(name) {
   if (!ctx) return;
   const trimmed = String(name || '').trim();
   if (!trimmed) {
-    globalThis.toastr?.warning?.('请输入角色名字', `[${MODULE_NAME}]`);
+    globalThis.toastr?.warning?.('角色注册：请输入角色名字', `[${MODULE_NAME}]`);
     return;
   }
   const roster = getRoster(ctx);
   if (!roster) return;
   if (roster[trimmed]) {
-    globalThis.toastr?.warning?.(`「${trimmed}」已在名单中`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.warning?.(`「${trimmed}」已在角色名单中`, `[${MODULE_NAME}]`);
     return;
   }
   roster[trimmed] = createEmptyArchive(trimmed);
   saveSettingsImmediate(ctx);
   logApp('info', '角色已注册', trimmed);
-  globalThis.toastr?.success?.(`「${trimmed}」已加入名单`, `[${MODULE_NAME}]`);
+  globalThis.toastr?.success?.(`「${trimmed}」已加入角色名单`, `[${MODULE_NAME}]`);
   renderRegisterList();
   renderArchiveList();
   refreshHomeStatuses();
@@ -269,7 +271,7 @@ async function unregisterCharacter(name) {
   delete roster[name];
   saveSettingsImmediate(ctx);
   logApp('info', '角色已注销', name);
-  globalThis.toastr?.info?.(`「${name}」已注销`, `[${MODULE_NAME}]`);
+  globalThis.toastr?.info?.(`「${name}」已从角色名单注销`, `[${MODULE_NAME}]`);
   renderRegisterList();
   renderArchiveList();
   refreshHomeStatuses();

@@ -180,12 +180,12 @@ function saveFilterEditor() {
   try {
     parsed = parseRegexLiteral(raw);
   } catch (error) {
-    globalThis.toastr?.error?.(String(error?.message || error), '[' + MODULE_NAME + ']');
+    globalThis.toastr?.error?.('正则表达式无效：' + String(error?.message || error), '[' + MODULE_NAME + ']');
     validateFilterEditor();
     return;
   }
   if (!name) {
-    globalThis.toastr?.warning?.('请填写名称', '[' + MODULE_NAME + ']');
+    globalThis.toastr?.warning?.('请填写正则名称', '[' + MODULE_NAME + ']');
     validateFilterEditor();
     return;
   }
@@ -273,11 +273,11 @@ function importFilters(file) {
       logApp('info', '消息正则已导入', normalized.length + ' 条');
       globalThis.toastr?.success?.('已导入 ' + normalized.length + ' 条正则', '[' + MODULE_NAME + ']');
     } catch (error) {
-      globalThis.toastr?.error?.('导入失败：' + String(error?.message || error), '[' + MODULE_NAME + ']');
+      globalThis.toastr?.error?.('正则导入失败：' + String(error?.message || error), '[' + MODULE_NAME + ']');
     }
   };
   reader.onerror = () => {
-    globalThis.toastr?.error?.('读取文件失败', '[' + MODULE_NAME + ']');
+    globalThis.toastr?.error?.('正则文件读取失败', '[' + MODULE_NAME + ']');
   };
   reader.readAsText(file);
 }

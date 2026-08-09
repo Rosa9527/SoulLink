@@ -844,10 +844,12 @@ function createPanel() {
         </section>
         <section id="${ARCHIVE_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-archive">
-            <p class="soullink-archive__note">「🔮 分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话与世界书自动更新档案（可并发），「🔮 分析全部角色」一键更新名单里所有角色，也可「✏️ 编辑」手动修改；开启「⚡ 自动维护」后，每轮 AI 回复生成结束会自动预筛并更新档案。</p>
+            <p class="soullink-archive__note">「🔮 分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话与世界书自动更新档案（可并发），「🔮 分析全部角色」一键更新名单里所有角色，「✨ 精编」会用「档案精编」提示词整理该角色档案（规范格式、合并重复、提炼浓缩），也可「✏️ 编辑」手动修改；开启「⚡ 自动维护」后，每轮 AI 回复生成结束会自动预筛并更新档案。</p>
             <div class="soullink-archive__toolbar">
-              <span id="${ARCHIVE_STATUS_ID}" class="soullink-archive__count">0 个档案</span>
-              <span id="${ARCHIVE_CHAT_ID}" class="soullink-archive__chat"></span>
+              <div class="soullink-archive__toolbar-row">
+                <span id="${ARCHIVE_STATUS_ID}" class="soullink-archive__count">0 个档案</span>
+                <button type="button" id="${ARCHIVE_REFINE_ALL_ID}" class="soullink-btn soullink-archive__refine-all" title="用「档案精编」提示词并发整理名单里所有角色的档案（规范格式、合并重复、提炼浓缩）">✨ 精编全部档案</button>
+              </div>
               <button type="button" id="${AUTO_ARCHIVE_TOGGLE_ID}" class="soullink-btn soullink-archive__auto-toggle" title="开启/关闭自动档案维护">⚡ 自动维护：开</button>
               <button type="button" id="${ARCHIVE_ANALYZE_ALL_ID}" class="soullink-btn soullink-archive__analyze-all">🔮 分析全部角色</button>
             </div>
@@ -895,7 +897,7 @@ function createPanel() {
         </span>
         <span class="soullink-panel__footer-actions">
           <span class="soullink-panel__theme-wrap">
-            <button type="button" id="${THEME_ID}" class="soullink-panel__theme" aria-haspopup="menu" aria-expanded="false" title="切换主题">🎨 手绘涂鸦</button>
+            <button type="button" id="${THEME_ID}" class="soullink-panel__theme" aria-haspopup="menu" aria-expanded="false" title="切换主题">🎨 古风典雅</button>
             <div id="${THEME_MENU_ID}" class="soullink-panel__theme-menu" role="menu" hidden></div>
           </span>
           <a class="soullink-panel__link" href="${GITHUB_REPO_URL}" target="_blank" rel="noopener noreferrer">GitHub</a>

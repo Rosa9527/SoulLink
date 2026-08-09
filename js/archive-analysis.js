@@ -75,6 +75,28 @@ async function buildArchiveAnalysisMessages(name, archive, prompt) {
   return messages;
 }
 
+// 档案精编请求体：只送「精编提示词 + 角色名 + 完整档案」，不携带剧情与世界书——
+// 精编只整理已有档案（规范格式、合并重复、提炼浓缩），不接收新信息。
+function buildRefineMessages(name, archive, prompt) {
+  const payload = {
+    character: name,
+    current_profile: serializeArchiveForPrompt(archive),
+  };
+  return [
+    { role: 'system', content: prompt },
+    {
+      role: 'user',
+      content: [
+        '以下是该角色的完整档案（current_profile），是唯一信息源。',
+        '请按「档案精编」提示词的要求，对档案做格式规范化与内容提炼浓缩，',
+        '输出整理后的完整档案 JSON（五个分节都要给出，fields 原样保留）。',
+        '',
+        JSON.stringify(payload, null, 2),
+      ].join('\n'),
+    },
+  ];
+}
+
 // TauriTavern 宿主代理的对话接口是 /api/backends/chat-completions/generate，
 // 请求体与 SillyTavern 的 /chat-completions 不同：custom_include_headers 的值
 // 需带引号（`Authorization: "Bearer xxx"`）。参数格式参考 st-chatu8 扩展。
@@ -462,6 +484,42 @@ function applySectionOps(archive, section, ops, changes, sourceFloor) {
   archive[section.key] = next;
 }
 
+// 应用「档案精编」结果：以 AI 返回的完整档案整体替换各分节（不是增量 diff）。
+// 防御规则：分节缺失时保留原内容（不丢数据）；按 id 找回旧条目以保留 source 溯源；
+// 合并条目沿用最早 id，其 source 随 id 保留；内容去重、空内容丢弃、重复 id 重新生成。
+function applyArchiveRefine(archive, refined) {
+  const changes = [];
+  if (!refined || typeof refined !== 'object' || Array.isArray(refined)) return changes;
+  for (const section of ARCHIVE_SECTIONS) {
+    const oldItems = Array.isArray(archive[section.key]) ? archive[section.key] : [];
+    if (refined[section.key] === undefined) continue; // 分节缺失：保留原内容
+    const oldById = new Map(oldItems.map((item) => [String(item.id), item]));
+    const next = [];
+    const seenContents = new Set();
+    const usedIds = new Set();
+    for (const entry of Array.isArray(refined[section.key]) ? refined[section.key] : []) {
+      const content = String(typeof entry === 'string' ? entry : entry?.content ?? '').trim();
+      if (!content || seenContents.has(content)) continue;
+      seenContents.add(content);
+      let id = entry && typeof entry === 'object' && entry.id !== undefined && entry.id !== null
+        ? String(entry.id).trim()
+        : '';
+      if (id && usedIds.has(id)) id = '';
+      const old = id ? oldById.get(id) : null;
+      if (!id) id = nextSectionItemId(section, next);
+      usedIds.add(id);
+      next.push(old ? { ...old, content } : { id, content });
+    }
+    const oldJson = JSON.stringify(oldItems.map((item) => item.content));
+    const newJson = JSON.stringify(next.map((item) => item.content));
+    if (oldJson !== newJson) {
+      changes.push(`「${section.label}」${oldItems.length} → ${next.length} 条`);
+    }
+    archive[section.key] = next;
+  }
+  return changes;
+}
+
 async function analyzeCharacter(name) {
   const ctx = getContextSafe();
   const roster = ctx ? getRoster(ctx) : null;
@@ -471,7 +529,7 @@ async function analyzeCharacter(name) {
   const settings = getSettings(ctx);
   const prompt = getPromptSavedText('archiveSystem', ctx);
   if (!prompt) {
-    globalThis.toastr?.error?.('未找到「档案系统」提示词', `[${MODULE_NAME}]`);
+    globalThis.toastr?.error?.('档案分析：未找到「档案系统」提示词', `[${MODULE_NAME}]`);
     return 'skipped';
   }
   const controller = new AbortController();
@@ -490,7 +548,7 @@ async function analyzeCharacter(name) {
     const summary = changes.length > 0 ? `更新 ${changes.length} 处` : '无变化';
     archiveAnalysisState[name] = { state: 'ok', message: summary };
     logApp('info', '角色档案分析完成', name, summary);
-    globalThis.toastr?.success?.(`「${name}」${summary}`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.success?.(`「${name}」档案${summary}`, `[${MODULE_NAME}]`);
     return 'ok';
   } catch (error) {
     const cancelled = controller.signal.aborted || error?.name === 'SoulLinkCancelError' || error?.name === 'AbortError';
@@ -511,11 +569,77 @@ async function analyzeCharacter(name) {
       detail: { rawContent, errorMessage: message },
     };
     logApp('error', '角色档案分析失败', name, message);
-    globalThis.toastr?.error?.(`「${name}」分析失败：${message.slice(0, 160)}`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.error?.(`「${name}」档案分析失败：${message.slice(0, 160)}`, `[${MODULE_NAME}]`);
     return 'error';
   } finally {
     renderArchiveCard(name);
     renderAnalyzeAllButton();
+    refreshHomeStatuses();
+  }
+}
+
+// 「档案精编」：用「档案精编」提示词 + 该角色完整档案调用 AI，做格式规范化与
+// 内容提炼浓缩，输出整理后的完整档案并整体替换。与 analyzeCharacter 的区别：
+// 精编不接收剧情与世界书，只整理已有档案；输出是完整档案而非增量 diff。
+async function refineCharacter(name) {
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : null;
+  const archive = roster?.[name];
+  if (!ctx || !archive) return 'skipped';
+  if (archiveRefineState[name]?.state === 'busy') return 'busy';
+  const hasContent = ARCHIVE_SCALAR_FIELDS.some((key) => String(archive.fields[key] || '').trim())
+    || ARCHIVE_SECTIONS.some((section) => (Array.isArray(archive[section.key]) ? archive[section.key] : []).length > 0);
+  if (!hasContent) {
+    globalThis.toastr?.info?.(`「${name}」档案为空，无需精编`, `[${MODULE_NAME}]`);
+    return 'skipped';
+  }
+  const settings = getSettings(ctx);
+  const prompt = getPromptSavedText('archiveRefine', ctx);
+  if (!prompt) {
+    globalThis.toastr?.error?.('未找到「档案精编」提示词', `[${MODULE_NAME}]`);
+    return 'skipped';
+  }
+  const controller = new AbortController();
+  archiveRefineState[name] = { state: 'busy', message: '精编中…', controller };
+  renderArchiveCard(name);
+  renderRefineAllButton();
+  logApp('info', '开始精编角色档案', name);
+  globalThis.toastr?.info?.(`开始精编「${name}」…`, `[${MODULE_NAME}]`);
+  let rawContent = '';
+  try {
+    const messages = buildRefineMessages(name, archive, prompt);
+    rawContent = await chatCompletion(settings, messages, { signal: controller.signal });
+    const refined = parseAgentJson(rawContent);
+    const changes = applyArchiveRefine(archive, refined);
+    archive.updatedAt = Date.now();
+    saveSettingsImmediate(ctx);
+    const summary = changes.length > 0 ? `精编 ${changes.length} 处` : '无变化';
+    archiveRefineState[name] = { state: 'ok', message: summary };
+    logApp('info', '角色档案精编完成', name, summary);
+    globalThis.toastr?.success?.(`「${name}」${summary === '无变化' ? '精编无变化' : summary}`, `[${MODULE_NAME}]`);
+    return 'ok';
+  } catch (error) {
+    const cancelled = controller.signal.aborted || error?.name === 'SoulLinkCancelError' || error?.name === 'AbortError';
+    if (cancelled) {
+      if (archiveRefineState[name]?.state !== 'cancelled') {
+        archiveRefineState[name] = { state: 'cancelled', message: '已取消' };
+      }
+      logApp('info', '角色档案精编已取消', name);
+      return 'cancelled';
+    }
+    console.error(`[${MODULE_NAME}] refineCharacter failed`, error);
+    const message = String(error?.message || error);
+    archiveRefineState[name] = {
+      state: 'error',
+      message: '精编失败',
+      detail: { rawContent, errorMessage: message },
+    };
+    logApp('error', '角色档案精编失败', name, message);
+    globalThis.toastr?.error?.(`「${name}」精编失败：${message.slice(0, 160)}`, `[${MODULE_NAME}]`);
+    return 'error';
+  } finally {
+    renderArchiveCard(name);
+    renderRefineAllButton();
     refreshHomeStatuses();
   }
 }
@@ -647,10 +771,10 @@ async function runAutoArchiveGate(ctx, settings, names, signature) {
     logApp('info', '自动档案维护：预筛完成', `入选 ${selected.length}/${names.length} 个角色`, selected);
     if (selected.length === 0) {
       logApp('debug', '自动档案维护：预筛 0 入选，原文', String(content || '').slice(0, 400));
-      globalThis.toastr?.info?.('预筛完成：本轮无角色需要更新档案', `[${MODULE_NAME}]`);
+      globalThis.toastr?.info?.('档案预筛完成：本轮无角色需要更新档案', `[${MODULE_NAME}]`);
       return;
     }
-    globalThis.toastr?.info?.(`预筛完成：入选 ${selected.length}/${names.length} 个角色，开始更新档案`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.info?.(`档案预筛完成：入选 ${selected.length}/${names.length} 个角色，开始更新档案`, `[${MODULE_NAME}]`);
     // 复用现有逐角色档案分析（含世界书注入与增量更新），并发执行。
     const results = await runArchiveAnalysisBatch(selected);
     const counts = { ok: 0, error: 0, cancelled: 0, skipped: 0, busy: 0 };
@@ -1012,11 +1136,11 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
     logApp('info', '角色推演：Gate 预筛完成', `入选 ${selected.length}/${names.length} 个角色`, selected);
     if (selected.length === 0) {
       logApp('warn', '角色推演：Gate 预筛 0 入选，原文', String(gateContent || '').slice(0, 400));
-      globalThis.toastr?.info?.('预筛完成：本轮无角色有戏份，直接生成', `[${MODULE_NAME}]`);
+      globalThis.toastr?.info?.('角色预筛完成：本轮无角色有戏份，直接生成', `[${MODULE_NAME}]`);
       finish({ skipped: true });
       return;
     }
-    globalThis.toastr?.info?.(`预筛完成：入选 ${selected.length}/${names.length} 个角色，开始角色扮演`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.info?.(`角色预筛完成：入选 ${selected.length}/${names.length} 个角色，开始角色扮演`, `[${MODULE_NAME}]`);
     const results = await Promise.allSettled(selected.map((name) => deduceNpcCharacter(name, controller.signal)));
     const succeeded = [];
     for (let i = 0; i < results.length; i += 1) {
@@ -1045,7 +1169,7 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
     const api = getExtensionPromptApi(ctx);
     if (!api) {
       logApp('warn', '角色推演：宿主不支持提示词注入，跳过注入');
-      globalThis.toastr?.warning?.('推演完成，但宿主不支持注入（setExtensionPrompt 不可用）', `[${MODULE_NAME}]`);
+      globalThis.toastr?.warning?.('角色推演完成，但宿主不支持注入（setExtensionPrompt 不可用）', `[${MODULE_NAME}]`);
       finish();
       return;
     }

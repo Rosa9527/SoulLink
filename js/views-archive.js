@@ -40,22 +40,27 @@ function buildArchiveCard(name, archive) {
   nameNode.className = 'soullink-archive__card-name';
   nameNode.textContent = name;
 
-  const state = archiveAnalysisState[name] || { state: 'idle', message: '' };
-  const status = document.createElement(state.state === 'error' ? 'button' : 'span');
+  const analyzeState = archiveAnalysisState[name] || { state: 'idle', message: '' };
+  const refineState = archiveRefineState[name] || { state: 'idle', message: '' };
+  // 状态胶囊：精编与分析共用，精编状态优先（精编是最近一次主动操作）
+  const refinePriority = ['busy', 'error', 'ok'].includes(refineState.state);
+  const statusState = refinePriority ? refineState : analyzeState;
+  const statusKind = refinePriority ? '精编' : '分析';
+  const status = document.createElement(statusState.state === 'error' ? 'button' : 'span');
   status.type = 'button';
   status.className = 'soullink-archive__status';
-  status.dataset.state = state.state;
-  status.textContent = state.message || '待分析';
-  if (state.state === 'error') {
+  status.dataset.state = statusState.state;
+  status.textContent = statusState.message || '待分析';
+  if (statusState.state === 'error') {
     status.classList.add('is-clickable');
-    status.title = '点击查看分析失败详情（AI 回复原文）';
-    status.addEventListener('click', () => showArchiveAnalysisError(name, state));
+    status.title = `点击查看${statusKind}失败详情（AI 回复原文）`;
+    status.addEventListener('click', () => showArchiveAnalysisError(name, statusState, statusKind));
   }
 
   const analyzeBtn = document.createElement('button');
   analyzeBtn.type = 'button';
   analyzeBtn.className = 'soullink-archive__analyze';
-  const busy = state.state === 'busy';
+  const busy = analyzeState.state === 'busy';
   analyzeBtn.classList.toggle('is-cancelling', busy);
   analyzeBtn.textContent = busy ? '⏹ 取消分析角色' : '🔮 分析本角色';
   analyzeBtn.title = busy ? '点击中断该角色的分析请求' : '用最近对话配合「档案系统」提示词更新该角色档案';
@@ -64,13 +69,41 @@ function buildArchiveCard(name, archive) {
     else analyzeCharacter(name);
   });
 
+  const refineBtn = document.createElement('button');
+  refineBtn.type = 'button';
+  refineBtn.className = 'soullink-archive__refine';
+  if (refineState.state === 'busy') {
+    refineBtn.classList.add('is-cancelling');
+    refineBtn.textContent = '⏹ 取消精编';
+    refineBtn.title = '点击中断该角色的精编请求';
+    refineBtn.addEventListener('click', () => cancelRefineCharacter(name));
+  } else {
+    refineBtn.textContent = '✨ 精编';
+    refineBtn.title = '用「档案精编」提示词整理该角色档案：规范格式、合并重复、提炼浓缩';
+    refineBtn.addEventListener('click', () => refineCharacter(name));
+  }
+
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
   editBtn.className = 'soullink-archive__edit';
   editBtn.textContent = archiveEditState[name] ? '✏️ 编辑中' : '✏️ 编辑';
   editBtn.addEventListener('click', () => toggleArchiveEdit(name));
 
-  head.append(nameNode, status, analyzeBtn, editBtn);
+  const collapsed = !!archiveCollapsedState[name];
+  card.classList.toggle('is-collapsed', collapsed);
+
+  const collapseBtn = document.createElement('button');
+  collapseBtn.type = 'button';
+  collapseBtn.className = 'soullink-archive__collapse';
+  collapseBtn.textContent = collapsed ? '▾' : '▴';
+  collapseBtn.title = collapsed ? '展开卡片' : '折叠卡片，只显示名字';
+  collapseBtn.addEventListener('click', () => toggleArchiveCollapse(name));
+
+  const actions = document.createElement('div');
+  actions.className = 'soullink-archive__card-actions';
+  actions.append(status, analyzeBtn, refineBtn, editBtn);
+
+  head.append(nameNode, collapseBtn, actions);
   card.appendChild(head);
   card.appendChild(archiveEditState[name]
     ? buildArchiveEditBody(name, archive)
@@ -199,6 +232,12 @@ function toggleArchiveEdit(name) {
   renderArchiveCard(name);
 }
 
+function toggleArchiveCollapse(name) {
+  if (archiveCollapsedState[name]) delete archiveCollapsedState[name];
+  else archiveCollapsedState[name] = true;
+  renderArchiveCard(name);
+}
+
 function saveArchiveEdit(name, body) {
   const ctx = getContextSafe();
   const roster = ctx ? getRoster(ctx) : null;
@@ -259,11 +298,10 @@ function renderArchiveList() {
   const ctx = getContextSafe();
   const roster = ctx ? getRoster(ctx) : {};
   const names = Object.keys(roster || {}).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
-  const chatNode = document.getElementById(ARCHIVE_CHAT_ID);
-  if (chatNode) chatNode.textContent = `绑定聊天：${getCurrentChatLabel(ctx)}`;
   const status = document.getElementById(ARCHIVE_STATUS_ID);
   if (status) status.textContent = `${names.length} 个档案`;
   renderAnalyzeAllButton();
+  renderRefineAllButton();
   list.textContent = '';
   if (names.length === 0) {
     const empty = document.createElement('div');
@@ -287,6 +325,16 @@ function renderAnalyzeAllButton() {
   button.textContent = isAnyAnalysisBusy() ? '⏹ 取消分析全部角色' : '🔮 分析全部角色';
 }
 
+function isAnyRefineBusy() {
+  return Object.values(archiveRefineState).some((state) => state?.state === 'busy');
+}
+
+function renderRefineAllButton() {
+  const button = document.getElementById(ARCHIVE_REFINE_ALL_ID);
+  if (!button) return;
+  button.textContent = isAnyRefineBusy() ? '⏹ 取消精编全部档案' : '✨ 精编全部档案';
+}
+
 function cancelCharacterAnalysis(name) {
   const state = archiveAnalysisState[name];
   if (!state || state.state !== 'busy') return;
@@ -300,7 +348,21 @@ function cancelCharacterAnalysis(name) {
   logApp('info', '取消角色分析', name);
 }
 
-function showArchiveAnalysisError(name, state) {
+function cancelRefineCharacter(name) {
+  const state = archiveRefineState[name];
+  if (!state || state.state !== 'busy') return;
+  try {
+    state.controller?.abort?.();
+  } catch {}
+  archiveRefineState[name] = { state: 'cancelled', message: '已取消' };
+  renderArchiveCard(name);
+  renderRefineAllButton();
+  refreshHomeStatuses();
+  logApp('info', '取消角色精编', name);
+  globalThis.toastr?.info?.(`已取消「${name}」精编`, `[${MODULE_NAME}]`);
+}
+
+function showArchiveAnalysisError(name, state, kind = '分析') {
   const panel = getPanel();
   if (!panel) return;
   const detail = state?.detail || {};
@@ -311,7 +373,7 @@ function showArchiveAnalysisError(name, state) {
     overlay = document.createElement('div');
     overlay.className = 'soullink-archive-error';
     overlay.innerHTML = `
-      <div class="soullink-archive-error__card" role="dialog" aria-modal="true" aria-label="分析失败详情">
+      <div class="soullink-archive-error__card" role="dialog" aria-modal="true" aria-label="${kind}失败详情">
         <div class="soullink-archive-error__head">
           <span class="soullink-archive-error__title"></span>
           <button type="button" class="soullink-archive-error__close" aria-label="关闭" title="关闭">✕</button>
@@ -349,14 +411,14 @@ function showArchiveAnalysisError(name, state) {
           document.execCommand?.('copy');
           textarea.remove();
         }
-        globalThis.toastr?.success?.('已复制 AI 回复原文', `[${MODULE_NAME}]`);
+        globalThis.toastr?.success?.('已复制失败详情 AI 回复原文', `[${MODULE_NAME}]`);
       } catch (error) {
-        globalThis.toastr?.error?.(`复制失败: ${error?.message || error}`, `[${MODULE_NAME}]`);
+        globalThis.toastr?.error?.(`失败详情原文复制失败：${error?.message || error}`, `[${MODULE_NAME}]`);
       }
     });
     panel.appendChild(overlay);
   }
-  overlay.querySelector('.soullink-archive-error__title').textContent = `「${name}」分析失败`;
+  overlay.querySelector('.soullink-archive-error__title').textContent = `「${name}」${kind}失败`;
   overlay.querySelector('.soullink-archive-error__hint').textContent = errorMessage
     ? `错误信息：${errorMessage}`
     : '（本次失败未捕获到错误信息）';
@@ -384,19 +446,24 @@ async function runArchiveAnalysisBatch(names) {
   return Promise.allSettled(names.map((name) => analyzeCharacter(name)));
 }
 
+// 批量执行角色精编：并发执行全部角色，每个角色独立 AbortController，取消语义与批量分析一致。
+async function runRefineBatch(names) {
+  return Promise.allSettled(names.map((name) => refineCharacter(name)));
+}
+
 async function analyzeAllCharacters() {
   const ctx = getContextSafe();
   const roster = ctx ? getRoster(ctx) : {};
   const names = Object.keys(roster || {});
   if (names.length === 0) {
-    globalThis.toastr?.warning?.('名单里还没有角色', `[${MODULE_NAME}]`);
+    globalThis.toastr?.warning?.('档案分析：名单里还没有角色', `[${MODULE_NAME}]`);
     return;
   }
   if (isAnyAnalysisBusy()) {
     // 「取消分析全部角色」：中断所有在途的角色分析
     for (const name of names) cancelCharacterAnalysis(name);
     logApp('info', '取消全部角色分析');
-    globalThis.toastr?.info?.('已取消全部角色分析', `[${MODULE_NAME}]`);
+    globalThis.toastr?.info?.('已取消全部角色的档案分析', `[${MODULE_NAME}]`);
     return;
   }
   const results = await runArchiveAnalysisBatch(names);
@@ -412,13 +479,53 @@ async function analyzeAllCharacters() {
   if (counts.busy > 0) parts.push(`${counts.busy} 进行中`);
   logApp('info', '全部角色分析结束', parts.join('，') || '无角色可分析');
   if (counts.error > 0) {
-    globalThis.toastr?.warning?.(`分析完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.warning?.(`档案分析完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
   } else if (counts.cancelled > 0 && counts.ok === 0) {
-    globalThis.toastr?.info?.(`分析已取消：${parts.join('，')}`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.info?.(`档案分析已取消：${parts.join('，')}`, `[${MODULE_NAME}]`);
   } else {
-    globalThis.toastr?.success?.(`分析完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+    globalThis.toastr?.success?.(`档案分析完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
   }
   renderAnalyzeAllButton();
+}
+
+async function refineAllCharacters() {
+  const ctx = getContextSafe();
+  const roster = ctx ? getRoster(ctx) : {};
+  const names = Object.keys(roster || {});
+  if (names.length === 0) {
+    globalThis.toastr?.warning?.('档案精编：名单里还没有角色', `[${MODULE_NAME}]`);
+    return;
+  }
+  if (isAnyRefineBusy()) {
+    // 「取消精编全部档案」：中断所有在途的角色精编
+    for (const name of names) cancelRefineCharacter(name);
+    logApp('info', '取消全部角色精编');
+    globalThis.toastr?.info?.('已取消全部角色的档案精编', `[${MODULE_NAME}]`);
+    return;
+  }
+  const results = await runRefineBatch(names);
+  const counts = { ok: 0, error: 0, cancelled: 0, skipped: 0, busy: 0 };
+  for (const result of results) {
+    const outcome = result.status === 'fulfilled' ? String(result.value || 'ok') : 'error';
+    counts[outcome] = (counts[outcome] || 0) + 1;
+  }
+  const parts = [];
+  if (counts.ok > 0) parts.push(`${counts.ok} 成功`);
+  if (counts.error > 0) parts.push(`${counts.error} 失败`);
+  if (counts.cancelled > 0) parts.push(`${counts.cancelled} 取消`);
+  if (counts.skipped > 0) parts.push(`${counts.skipped} 跳过`);
+  if (counts.busy > 0) parts.push(`${counts.busy} 进行中`);
+  logApp('info', '全部角色精编结束', parts.join('，') || '无角色可精编');
+  if (counts.error > 0) {
+    globalThis.toastr?.warning?.(`档案精编完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+  } else if (counts.cancelled > 0 && counts.ok === 0) {
+    globalThis.toastr?.info?.(`档案精编已取消：${parts.join('，')}`, `[${MODULE_NAME}]`);
+  } else if (counts.ok === 0 && counts.skipped > 0) {
+    globalThis.toastr?.info?.(`档案精编完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+  } else {
+    globalThis.toastr?.success?.(`档案精编完成：${parts.join('，')}`, `[${MODULE_NAME}]`);
+  }
+  renderRefineAllButton();
 }
 
 function renderAutoArchiveToggle() {
@@ -445,9 +552,11 @@ function toggleAutoArchive() {
 function initArchiveSection(panel) {
   if (!panel || panel.dataset.archiveReady === 'true') return;
   document.getElementById(ARCHIVE_ANALYZE_ALL_ID)?.addEventListener('click', analyzeAllCharacters);
+  document.getElementById(ARCHIVE_REFINE_ALL_ID)?.addEventListener('click', refineAllCharacters);
   document.getElementById(AUTO_ARCHIVE_TOGGLE_ID)?.addEventListener('click', toggleAutoArchive);
   renderAutoArchiveToggle();
   renderAnalyzeAllButton();
+  renderRefineAllButton();
   renderArchiveList();
   panel.dataset.archiveReady = 'true';
   logApp('info', '档案系统已就绪');

@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.2.0';
+const MODULE_VERSION = '1.3.0';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
@@ -7,8 +7,8 @@ const VERSION_CHECK_ID = 'soullink-version-check';
 const THEME_ID = 'soullink-theme';
 const THEME_MENU_ID = 'soullink-theme-menu';
 // 主题注册表：id 对应 style.css 中 [data-theme='...'] 的变量覆盖；name 显示在按钮与菜单里。
-// 目前只有默认「手绘涂鸦」一个主题，后续新增主题只需在此追加条目并在 style.css 补变量覆盖。
-const DEFAULT_THEME = 'paper';
+// 默认主题为「古风典雅」，后续新增主题只需在此追加条目并在 style.css 补变量覆盖。
+const DEFAULT_THEME = 'gufeng';
 const THEMES = Object.freeze([
   { id: 'paper', name: '手绘涂鸦' },
   { id: 'qq', name: '聊天气泡' },
@@ -90,10 +90,10 @@ const REGISTER_LIST_ID = 'soullink-register-list';
 const REGISTER_STATUS_ID = 'soullink-register-status';
 const REGISTER_CHAT_ID = 'soullink-register-chat';
 const ARCHIVE_ANALYZE_ALL_ID = 'soullink-archive-analyze-all';
+const ARCHIVE_REFINE_ALL_ID = 'soullink-archive-refine-all';
 const AUTO_ARCHIVE_TOGGLE_ID = 'soullink-archive-auto-toggle';
 const ARCHIVE_LIST_ID = 'soullink-archive-list';
 const ARCHIVE_STATUS_ID = 'soullink-archive-status';
-const ARCHIVE_CHAT_ID = 'soullink-archive-chat';
 const WORLDBOOK_VIEW_ID = 'soullink-worldbook-view';
 const WORLDBOOK_ICON_CLASS = 'fa-solid fa-book-bookmark';
 const HOME_WORLDBOOK_CARD_ID = 'soullink-home-worldbook-card';
@@ -229,6 +229,7 @@ const PRESET_META = Object.freeze({
   archivePreScreen: Object.freeze({ label: '档案预筛', title: '档案预筛系统提示词', description: '子 agent 判断本轮哪些已注册角色获得了值得写入档案的新信息、新经历。' }),
   roleplaySystem: Object.freeze({ label: '角色扮演', title: '角色扮演系统提示词', description: '子 agent 以指定角色视角单独扮演，模拟 TA 的内心与行为倾向，输出内心独白（含信息差、认知框架与具体行动意图）。' }),
   roleplayPreScreen: Object.freeze({ label: '角色预筛', title: '角色预筛系统提示词', description: '子 agent 判断末条用户消息引发的下一轮剧情中，哪些已注册角色会开口、行动或产生重要内心反应。' }),
+  archiveRefine: Object.freeze({ label: '档案精编', title: '档案精编系统提示词', description: '子 agent 对指定角色的完整档案做格式规范化与内容提炼浓缩，输出整理后的完整档案。' }),
 });
 
 const ARCHIVE_SCALAR_FIELDS = Object.freeze(['name', 'age', 'gender', 'occupation']);

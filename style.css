@@ -1641,8 +1641,7 @@ select.soullink-input {
   font-size: 12.5px;
 }
 
-.soullink-register__meta,
-.soullink-archive__toolbar {
+.soullink-register__meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1651,10 +1650,16 @@ select.soullink-input {
   font-size: 11.5px;
 }
 
+.soullink-archive__toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .soullink-register__status,
 .soullink-register__chat,
-.soullink-archive__count,
-.soullink-archive__chat {
+.soullink-archive__count {
   display: inline-flex;
   align-items: center;
   padding: 2px 9px;
@@ -1665,8 +1670,7 @@ select.soullink-input {
   transform: rotate(-0.5deg);
 }
 
-.soullink-register__chat,
-.soullink-archive__chat {
+.soullink-register__chat {
   max-width: 55%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1752,8 +1756,26 @@ select.soullink-input {
   gap: 12px;
 }
 
+.soullink-archive__toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.soullink-archive__refine-all {
+  flex: none;
+  min-width: 148px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  background:
+    radial-gradient(circle at 26% 24%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 42%),
+    var(--sl-green);
+}
+
 .soullink-archive__analyze-all {
   flex: none;
+  align-self: flex-end;
   min-width: 148px;
   padding: 7px 12px;
   font-size: 12.5px;
@@ -1793,7 +1815,7 @@ select.soullink-input {
 }
 
 .soullink-archive__card-name {
-  flex: 1 1 100%;
+  flex: 1;
   min-width: 0;
   font-size: 15.5px;
   font-weight: 700;
@@ -1849,7 +1871,9 @@ button.soullink-archive__status:active {
 }
 
 .soullink-archive__analyze,
-.soullink-archive__edit {
+.soullink-archive__refine,
+.soullink-archive__edit,
+.soullink-archive__collapse {
   padding: 5px 11px;
   font-family: var(--sl-font);
   font-size: 11.5px;
@@ -1874,6 +1898,30 @@ button.soullink-archive__status:active {
   opacity: 0.65;
   cursor: wait;
 }
+
+.soullink-archive__refine {
+  color: #fff;
+  background: var(--sl-green);
+  border: 2.5px solid var(--sl-ink);
+  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.35);
+}
+
+.soullink-archive__refine:hover:not(:disabled) {
+  transform: rotate(1.5deg) translateY(-1px);
+}
+
+.soullink-archive__refine:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.soullink-archive__refine.is-cancelling {
+  color: var(--sl-ink);
+  background: rgba(242, 193, 78, 0.3);
+  border-color: var(--sl-yellow);
+}
+
+
 
 .soullink-archive__edit {
   color: var(--sl-ink);
@@ -2140,6 +2188,32 @@ button.soullink-archive__status:active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.soullink-archive__card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 100%;
+  justify-content: flex-end;
+}
+
+.soullink-archive__collapse {
+  flex: 0 0 auto;
+  color: var(--sl-ink);
+  background: rgba(255, 255, 255, 0.85);
+  border: 2.5px solid var(--sl-ink-soft);
+}
+
+.soullink-archive__collapse:hover {
+  background: rgba(242, 193, 78, 0.25);
+  border-color: var(--sl-ink);
+  transform: rotate(1.5deg);
+}
+
+.soullink-archive__card.is-collapsed .soullink-archive__card-actions,
+.soullink-archive__card.is-collapsed .soullink-archive__body {
+  display: none;
 }
 
 .soullink-worldbook__book-count {
@@ -3051,7 +3125,6 @@ button.soullink-archive__status:active {
 .soullink-panel:where([data-theme='qq']) .soullink-register__chat,
 .soullink-panel:where([data-theme='qq']) .soullink-register__npc-status,
 .soullink-panel:where([data-theme='qq']) .soullink-archive__count,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__chat,
 .soullink-panel:where([data-theme='qq']) .soullink-archive__status,
 .soullink-panel:where([data-theme='qq']) .soullink-worldbook__status,
 .soullink-panel:where([data-theme='qq']) .soullink-worldbook__chat,
@@ -3176,6 +3249,7 @@ button.soullink-archive__status:active {
   transform: none;
 }
 
+.soullink-panel:where([data-theme='qq']) .soullink-archive__refine,
 .soullink-panel:where([data-theme='qq']) .soullink-archive__analyze {
   background: linear-gradient(135deg, #12b7f5, #0aa5ff);
   border: none;
@@ -3186,13 +3260,15 @@ button.soullink-archive__status:active {
   transform: none;
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-archive__edit {
+.soullink-panel:where([data-theme='qq']) .soullink-archive__edit,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__collapse {
   background: #fff;
   border: 1.5px solid #e5e6eb;
   border-radius: 8px;
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-archive__edit:hover {
+.soullink-panel:where([data-theme='qq']) .soullink-archive__edit:hover,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__collapse:hover {
   background: rgba(18, 183, 245, 0.08);
   border-color: #12b7f5;
   transform: none;
@@ -3677,7 +3753,6 @@ button.soullink-archive__status:active {
 .soullink-panel:where([data-theme='gufeng']) .soullink-register__chat,
 .soullink-panel:where([data-theme='gufeng']) .soullink-register__npc-status,
 .soullink-panel:where([data-theme='gufeng']) .soullink-archive__count,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__chat,
 .soullink-panel:where([data-theme='gufeng']) .soullink-archive__status,
 .soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__status,
 .soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__chat,
@@ -3802,6 +3877,7 @@ button.soullink-archive__status:active {
   transform: none;
 }
 
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__refine,
 .soullink-panel:where([data-theme='gufeng']) .soullink-archive__analyze {
   background: linear-gradient(180deg, #b03a2e, #98332a);
   border: 1.5px solid #7c2a21;
@@ -3812,13 +3888,15 @@ button.soullink-archive__status:active {
   transform: none;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit {
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__collapse {
   background: #fbf7ec;
   border: 1.5px solid rgba(59, 51, 42, 0.3);
   border-radius: 4px;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit:hover {
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit:hover,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__collapse:hover {
   background: rgba(166, 58, 46, 0.07);
   border-color: #a63a2e;
   transform: none;

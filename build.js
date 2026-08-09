@@ -25,6 +25,7 @@ const PROMPT_FILES = Object.freeze({
   archivePreScreen: 'archivePreScreen.txt',
   roleplaySystem: 'roleplaySystem.txt',
   roleplayPreScreen: 'roleplayPreScreen.txt',
+  archiveRefine: 'archiveRefine.txt',
 });
 
 // 拼接顺序必须与依赖关系一致：常量 → 工具 → 宿主 → UI 外壳 → 各视图 → 核心管线 → 入口。

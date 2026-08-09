@@ -232,9 +232,9 @@ async function copyRoundInjectionText() {
       document.execCommand('copy');
       textarea.remove();
     }
-    globalThis.toastr?.success?.('已复制注入提示词原文', '[' + MODULE_NAME + ']');
+    globalThis.toastr?.success?.('已复制推演注入提示词原文', '[' + MODULE_NAME + ']');
   } catch (error) {
     console.warn('[' + MODULE_NAME + '] 复制注入提示词失败', error);
-    globalThis.toastr?.warning?.('复制失败，请手动选择文本', '[' + MODULE_NAME + ']');
+    globalThis.toastr?.warning?.('推演原文复制失败，请手动选择文本', '[' + MODULE_NAME + ']');
   }
 }
