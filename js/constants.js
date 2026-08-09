@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.1.4';
+const MODULE_VERSION = '1.1.5';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
@@ -29,6 +29,8 @@ const API_KEY_TOGGLE_ID = 'soullink-api-key-toggle';
 const API_CONNECT_ID = 'soullink-api-connect';
 const API_MODEL_LIST_ID = 'soullink-api-model-list';
 const API_MODEL_ID = 'soullink-api-model';
+const API_CONCURRENCY_TOGGLE_ID = 'soullink-api-concurrency-toggle';
+const API_CONCURRENCY_INPUT_ID = 'soullink-api-concurrency-input';
 const FILTER_LIST_ID = 'soullink-filter-list';
 const FILTER_STATUS_ID = 'soullink-filter-status';
 const FILTER_ADD_ID = 'soullink-filter-add';
@@ -411,6 +413,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   apiKey: '',
   model: '',
   modelOptions: [],
+  apiConcurrencyEnabled: true,
+  apiConcurrencyLimit: 3,
   logMaxEntries: LOG_MAX_ENTRIES_DEFAULT,
   logAutoScroll: true,
   logConsoleNoise: true,

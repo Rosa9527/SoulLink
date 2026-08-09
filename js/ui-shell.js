@@ -617,6 +617,14 @@ function createPanel() {
               </select>
               <input id="soullink-api-model" class="soullink-input" type="text" placeholder="或手动填写模型名称" autocomplete="off" spellcheck="false" />
             </div>
+            <div class="soullink-api__field">
+              <span class="soullink-api__label">限制并发</span>
+              <div class="soullink-api__concurrency-row">
+                <button type="button" id="${API_CONCURRENCY_TOGGLE_ID}" class="soullink-btn soullink-api__concurrency-toggle" title="开启/关闭并发限制">🔀 并发限制：开</button>
+                <input id="${API_CONCURRENCY_INPUT_ID}" class="soullink-input soullink-api__concurrency-input" type="number" min="1" max="10" step="1" placeholder="3" autocomplete="off" aria-label="并发上限" />
+              </div>
+              <p class="soullink-api__hint">同时最多发送的 AI 请求数（默认 3）；多出的请求会排队等待前面的请求完成后再发送。</p>
+            </div>
             <p class="soullink-api__hint">填入接口地址与 API Key 后点「连接并拉取模型」，再从列表选择模型；不支持模型列表的渠道可直接手动填写模型名称。</p>
           </div>
           <div class="soullink-panel__section soullink-filter">

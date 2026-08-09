@@ -70,6 +70,42 @@ async function connectAndLoadModels(ctx) {
   }
 }
 
+function renderApiConcurrencyControl() {
+  const toggle = document.getElementById(API_CONCURRENCY_TOGGLE_ID);
+  const input = document.getElementById(API_CONCURRENCY_INPUT_ID);
+  if (!toggle && !input) return;
+  const ctx = getContextSafe();
+  const settings = ctx ? getSettings(ctx) : null;
+  if (!settings) return;
+  const enabled = settings.apiConcurrencyEnabled !== false;
+  if (toggle) {
+    toggle.textContent = enabled ? '🔀 并发限制：开' : '🔀 并发限制：关';
+    toggle.classList.toggle('is-active', enabled);
+    toggle.title = enabled ? '点击关闭并发限制' : '点击开启并发限制';
+  }
+  if (input) {
+    input.value = settings.apiConcurrencyLimit;
+    input.disabled = !enabled;
+  }
+}
+
+function toggleApiConcurrency() {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const settings = getSettings(ctx);
+  settings.apiConcurrencyEnabled = !settings.apiConcurrencyEnabled;
+  saveSettingsImmediate(ctx);
+  renderApiConcurrencyControl();
+  logApp('info', settings.apiConcurrencyEnabled ? '并发限制已开启' : '并发限制已关闭');
+  globalThis.toastr?.info?.(`并发限制已${settings.apiConcurrencyEnabled ? '开启' : '关闭'}`, `[${MODULE_NAME}]`);
+}
+
+function clampApiConcurrencyLimit(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 1;
+  return Math.min(10, Math.max(1, Math.floor(num)));
+}
+
 function applyApiSettingsToForm(ctx) {
   const settings = getSettings(ctx);
   const setValue = (id, value) => {
@@ -80,6 +116,7 @@ function applyApiSettingsToForm(ctx) {
   setValue(API_URL_ID, settings.apiUrl);
   setValue(API_KEY_ID, settings.apiKey);
   setValue(API_MODEL_ID, settings.model);
+  renderApiConcurrencyControl();
   populateModelList(settings);
   if (settings.modelOptions.length > 0) {
     setApiStatus(`已缓存 ${settings.modelOptions.length} 个模型`, 'ok');
@@ -130,6 +167,20 @@ function initApiSection(panel) {
     saveSettings(ctx);
   });
   bindPersist(API_MODEL_ID, 'model');
+
+  document.getElementById(API_CONCURRENCY_TOGGLE_ID)?.addEventListener('click', toggleApiConcurrency);
+  const concurrencyInput = document.getElementById(API_CONCURRENCY_INPUT_ID);
+  concurrencyInput?.addEventListener('input', (event) => {
+    const ctx = getCtx();
+    if (!ctx) return;
+    const settings = getSettings(ctx);
+    settings.apiConcurrencyLimit = clampApiConcurrencyLimit(event.target?.value);
+    saveSettings(ctx);
+  });
+  concurrencyInput?.addEventListener('change', (event) => {
+    if (!event.target) return;
+    event.target.value = clampApiConcurrencyLimit(event.target.value);
+  });
 
   try {
     const ctx = getCtx();

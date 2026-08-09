@@ -492,6 +492,35 @@ select.soullink-input {
   flex: 1;
 }
 
+.soullink-api__concurrency-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.soullink-api__concurrency-toggle {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+
+.soullink-api__concurrency-toggle.is-active {
+  border-color: var(--sl-green);
+  color: #4f7a33;
+  background: rgba(123, 160, 91, 0.18);
+}
+
+.soullink-api__concurrency-input {
+  flex: none;
+  width: 84px;
+  text-align: center;
+}
+
+.soullink-api__concurrency-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .soullink-icon-btn {
   flex: none;
   display: inline-flex;

@@ -127,6 +127,115 @@ async function sleepAbortable(ms, signal) {
   });
 }
 
+// ---------- API 并发限制 ----------
+// 同时进行的 AI 对话请求上限（默认 3，可在「API 连接」面板调整并发数与开关）。
+// 超出的请求排队等待，某个请求完成后再放行一个；关闭限制或上限 < 1 时不排队。
+const apiConcurrencyState = { active: 0, queue: [], limit: 0 };
+
+// 排队 toast：队列长度变化时原地更新「当前 N 个请求正在排队」，队列清空后自动关闭。
+const apiQueueToast = { element: null, messageEl: null };
+let apiQueueToastUnmanaged = false; // 宿主 toastr 不返回元素时，本次排队期间只提示一次
+
+function closeApiQueueToast() {
+  if (apiQueueToast.element) {
+    try {
+      globalThis.toastr?.clear?.(apiQueueToast.element, true);
+    } catch (error) {
+      console.warn(`[${MODULE_NAME}] unable to clear queue toast`, error);
+    }
+  }
+  apiQueueToast.element = null;
+  apiQueueToast.messageEl = null;
+  apiQueueToastUnmanaged = false;
+}
+
+function updateApiQueueToast(limit, queueLength) {
+  if (queueLength <= 0) {
+    closeApiQueueToast();
+    return;
+  }
+  const toastr = globalThis.toastr;
+  if (!toastr?.info || apiQueueToastUnmanaged) return;
+  const message = `AI 请求已达并发上限（${limit}），当前 ${queueLength} 个请求正在排队等待`;
+  if (apiQueueToast.messageEl && apiQueueToast.messageEl.isConnected) {
+    apiQueueToast.messageEl.textContent = message;
+    return;
+  }
+  // 首次排队：弹一条长驻 toast，并拿到 DOM 引用，之后队列变化时原地更新文案。
+  try {
+    const toastElement = toastr.info(message, `[${MODULE_NAME}]`, { timeOut: 12000, extendedTimeOut: 4000 });
+    if (!toastElement) {
+      apiQueueToastUnmanaged = true;
+      return;
+    }
+    const root = toastElement.jquery ? toastElement[0] : toastElement;
+    if (!root) {
+      apiQueueToastUnmanaged = true;
+      return;
+    }
+    apiQueueToast.element = root;
+    apiQueueToast.messageEl = root.querySelector?.('.toast-message') || null;
+    if (!apiQueueToast.messageEl) apiQueueToastUnmanaged = true;
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] unable to show queue toast`, error);
+  }
+}
+
+function getApiConcurrencyLimit(settings) {
+  if (settings?.apiConcurrencyEnabled === false) return 0;
+  const limit = Number(settings?.apiConcurrencyLimit);
+  return Number.isFinite(limit) && limit >= 1 ? Math.floor(limit) : 0;
+}
+
+async function acquireApiConcurrencySlot(settings, signal) {
+  const limit = getApiConcurrencyLimit(settings);
+  if (limit <= 0) return () => {};
+  if (signal?.aborted) throw createCancelError();
+  if (apiConcurrencyState.active < limit) {
+    apiConcurrencyState.active += 1;
+    return releaseApiConcurrencySlot;
+  }
+  // 排队等待空闲名额；中途取消会立即出队并抛取消错误，避免请求滞留在队列里。
+  const waiter = { resolve: null, reject: null, onAbort: null };
+  const queued = new Promise((resolve, reject) => {
+    waiter.resolve = resolve;
+    waiter.reject = reject;
+  });
+  waiter.onAbort = () => {
+    const index = apiConcurrencyState.queue.indexOf(waiter);
+    if (index >= 0) {
+      apiConcurrencyState.queue.splice(index, 1);
+      updateApiQueueToast(apiConcurrencyState.limit, apiConcurrencyState.queue.length);
+      waiter.reject(createCancelError());
+    }
+  };
+  if (signal) {
+    if (signal.aborted) throw createCancelError();
+    signal.addEventListener('abort', waiter.onAbort, { once: true });
+  }
+  apiConcurrencyState.queue.push(waiter);
+  apiConcurrencyState.limit = limit;
+  if (signal?.aborted) waiter.onAbort();
+  logApp('debug', 'API 并发已满，请求排队等待', `上限 ${limit} · 队列 ${apiConcurrencyState.queue.length}`);
+  updateApiQueueToast(limit, apiConcurrencyState.queue.length);
+  try {
+    await queued;
+  } finally {
+    if (signal) signal.removeEventListener('abort', waiter.onAbort);
+  }
+  apiConcurrencyState.active += 1;
+  return releaseApiConcurrencySlot;
+}
+
+function releaseApiConcurrencySlot() {
+  apiConcurrencyState.active = Math.max(0, apiConcurrencyState.active - 1);
+  const next = apiConcurrencyState.queue.shift();
+  if (next) {
+    next.resolve();
+    updateApiQueueToast(apiConcurrencyState.limit, apiConcurrencyState.queue.length);
+  }
+}
+
 // 单次对话请求：跨域走宿主代理，代理明显损坏（非 2xx / 非 JSON / 无内容 JSON /
 // 401/403/404/405 / 路由不存在）时回退直连；返回 { content, transport }。
 // 上游瞬态故障（空内容、429、5xx、busy 类错误信封）以 retryable 标记抛出，
@@ -233,35 +342,42 @@ async function chatCompletion(settings, messages, options = {}) {
       : CHAT_COMPLETION_DEFAULT_MAX_TOKENS,
   };
   const maxAttempts = Math.max(1, Math.min(5, Number(options.maxAttempts) > 0 ? Number(options.maxAttempts) : CHAT_COMPLETION_MAX_ATTEMPTS));
-  logApp('debug', '发送 AI 对话请求', `${model} · ${isCrossOriginUrl(`${apiBase}/chat/completions`) ? 'host-proxy' : 'direct'}`);
-  let lastError = null;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (options.signal?.aborted) throw createCancelError();
-    try {
-      const { content, transport } = await requestChatCompletionOnce(apiBase, settings, body, options.signal);
-      if (attempt > 1) {
-        logApp('info', 'AI 对话请求重试成功', `${model} · ${transport} · 第 ${attempt}/${maxAttempts} 次`);
-      } else {
-        logApp('debug', 'AI 对话响应已接收', `${model} · ${transport}`);
-      }
-      return content;
-    } catch (error) {
+  // 并发限制：占住一个并发名额再发送；多出的请求排队等待，前面的请求完成后再放行。
+  // 整个任务（含自动重试）占用同一个名额，任务结束或取消时立即释放。
+  const release = await acquireApiConcurrencySlot(settings, options.signal);
+  try {
+    logApp('debug', '发送 AI 对话请求', `${model} · ${isCrossOriginUrl(`${apiBase}/chat/completions`) ? 'host-proxy' : 'direct'}`);
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       if (options.signal?.aborted) throw createCancelError();
-      lastError = error;
-      const retryable = error?.retryable === true;
-      if (retryable && attempt < maxAttempts) {
-        const delayMs = CHAT_COMPLETION_RETRY_DELAY_MS * attempt;
-        logApp('warn', 'AI 对话请求异常，稍后自动重试', `${model} · 第 ${attempt}/${maxAttempts} 次 · ${String(error.message || error).slice(0, 140)}`);
-        await sleepAbortable(delayMs, options.signal);
-        continue;
+      try {
+        const { content, transport } = await requestChatCompletionOnce(apiBase, settings, body, options.signal);
+        if (attempt > 1) {
+          logApp('info', 'AI 对话请求重试成功', `${model} · ${transport} · 第 ${attempt}/${maxAttempts} 次`);
+        } else {
+          logApp('debug', 'AI 对话响应已接收', `${model} · ${transport}`);
+        }
+        return content;
+      } catch (error) {
+        if (options.signal?.aborted) throw createCancelError();
+        lastError = error;
+        const retryable = error?.retryable === true;
+        if (retryable && attempt < maxAttempts) {
+          const delayMs = CHAT_COMPLETION_RETRY_DELAY_MS * attempt;
+          logApp('warn', 'AI 对话请求异常，稍后自动重试', `${model} · 第 ${attempt}/${maxAttempts} 次 · ${String(error.message || error).slice(0, 140)}`);
+          await sleepAbortable(delayMs, options.signal);
+          continue;
+        }
+        if (retryable && attempt > 1) {
+          throw createChatError(`${String(error.message || error)}（已自动重试 ${attempt - 1} 次）`, true);
+        }
+        throw error;
       }
-      if (retryable && attempt > 1) {
-        throw createChatError(`${String(error.message || error)}（已自动重试 ${attempt - 1} 次）`, true);
-      }
-      throw error;
     }
+    throw lastError || new Error('AI 对话请求失败');
+  } finally {
+    release();
   }
-  throw lastError || new Error('AI 对话请求失败');
 }
 
 function parseAgentJson(text) {
