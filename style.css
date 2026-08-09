@@ -25,24 +25,24 @@
 .soullink-sphere {
   position: fixed;
   z-index: 10000;
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   user-select: none;
   touch-action: none;
-  color: var(--sl-violet);
-  font-size: 21px;
-  border-radius: 46% 54% 52% 48% / 54% 46% 54% 46%;
+  color: #a78fd8;
+  font-size: 15px;
+  border-radius: 50%;
   background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 46%),
-    var(--sl-paper);
-  border: 3px solid var(--sl-ink);
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 46%),
+    rgba(253, 246, 227, 0.88);
+  border: 2px solid rgba(61, 43, 31, 0.5);
   box-shadow:
-    4px 5px 0 rgba(61, 43, 31, 0.28),
-    0 10px 18px rgba(61, 43, 31, 0.22);
+    3px 4px 0 rgba(61, 43, 31, 0.18),
+    0 8px 14px rgba(61, 43, 31, 0.16);
   filter: url(#soullink-wobble-strong);
   transform: rotate(-4deg);
   transition: transform 0.25s ease, box-shadow 0.25s ease;
@@ -51,10 +51,10 @@
 .soullink-sphere::before {
   content: '';
   position: absolute;
-  inset: 7px;
+  inset: 5px;
   border: 2px dashed var(--sl-violet);
   border-radius: 50%;
-  opacity: 0.5;
+  opacity: 0.4;
   pointer-events: none;
   animation: soullink-spin 16s linear infinite;
 }
@@ -67,8 +67,8 @@
 .soullink-sphere:hover {
   animation: soullink-wiggle 0.45s ease-in-out;
   box-shadow:
-    5px 6px 0 rgba(61, 43, 31, 0.3),
-    0 12px 22px rgba(61, 43, 31, 0.26);
+    4px 5px 0 rgba(61, 43, 31, 0.2),
+    0 10px 16px rgba(61, 43, 31, 0.18);
 }
 
 .soullink-sphere:active {
@@ -2768,11 +2768,11 @@ button.soullink-archive__status:active {
 .soullink-sphere:where([data-theme='qq']) {
   color: #fff;
   border-radius: 50%;
-  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
+  background: linear-gradient(135deg, rgba(126, 211, 255, 0.92), rgba(64, 178, 255, 0.92));
   border: none;
   box-shadow:
-    inset 0 2px 4px rgba(255, 255, 255, 0.25),
-    0 6px 16px rgba(18, 183, 245, 0.4);
+    inset 0 2px 4px rgba(255, 255, 255, 0.35),
+    0 6px 14px rgba(64, 178, 255, 0.35);
   filter: none;
   transform: none;
 }
@@ -2788,8 +2788,8 @@ button.soullink-archive__status:active {
 .soullink-sphere:where([data-theme='qq']):hover {
   animation: none;
   box-shadow:
-    inset 0 2px 4px rgba(255, 255, 255, 0.25),
-    0 8px 20px rgba(18, 183, 245, 0.5);
+    inset 0 2px 4px rgba(255, 255, 255, 0.35),
+    0 8px 18px rgba(64, 178, 255, 0.45);
   transform: scale(1.05);
 }
 
@@ -3365,13 +3365,15 @@ button.soullink-archive__status:active {
 
 /* 悬浮球：朱砂印章 */
 .soullink-sphere:where([data-theme='gufeng']) {
-  color: #fdf6e3;
-  border-radius: 7px;
-  background: linear-gradient(135deg, #b03a2e, #98332a);
-  border: 1.5px solid #7c2a21;
+  width: 40px;
+  height: 40px;
+  color: #c2553f;
+  border-radius: 50%;
+  background: rgba(247, 241, 227, 0.9);
+  border: 1.5px solid rgba(194, 85, 63, 0.55);
   box-shadow:
-    inset 0 0 0 2px rgba(253, 246, 227, 0.22),
-    0 4px 10px rgba(59, 51, 42, 0.35);
+    inset 0 0 0 2px rgba(194, 85, 63, 0.12),
+    0 4px 10px rgba(59, 51, 42, 0.18);
   filter: none;
   transform: none;
 }
@@ -3388,8 +3390,8 @@ button.soullink-archive__status:active {
   animation: none;
   transform: translateY(-2px) scale(1.04);
   box-shadow:
-    inset 0 0 0 2px rgba(253, 246, 227, 0.22),
-    0 6px 14px rgba(166, 58, 46, 0.45);
+    inset 0 0 0 2px rgba(194, 85, 63, 0.12),
+    0 6px 14px rgba(194, 85, 63, 0.3);
 }
 
 .soullink-sphere:where([data-theme='gufeng']):active {
