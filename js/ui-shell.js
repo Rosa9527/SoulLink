@@ -349,10 +349,10 @@ const PANEL_VIEW_TITLES = Object.freeze({
   [API_VIEW_ID]: 'API 连接',
   [LOG_VIEW_ID]: '日志系统',
   [PRESET_VIEW_ID]: '预设',
-  [REGISTER_VIEW_ID]: '角色扮演',
+  [REGISTER_VIEW_ID]: '角色注册',
   [ARCHIVE_VIEW_ID]: '档案系统',
   [WORLDBOOK_VIEW_ID]: '世界书',
-  [ROUND_VIEW_ID]: '上一轮角色扮演',
+  [ROUND_VIEW_ID]: '角色扮演',
 });
 const PANEL_WIDE_MODES = Object.freeze({
   [LOG_VIEW_ID]: 'is-log-mode',
@@ -388,7 +388,7 @@ function showPanelView(viewId) {
   if (viewId === REGISTER_VIEW_ID) {
     renderRegisterList();
     renderNpcDeductionToggle();
-    logApp('debug', '打开角色扮演视图');
+    logApp('debug', '打开角色注册视图');
   }
   if (viewId === ARCHIVE_VIEW_ID) {
     renderArchiveList();
@@ -400,7 +400,7 @@ function showPanelView(viewId) {
   }
   if (viewId === ROUND_VIEW_ID) {
     renderRoundView();
-    logApp('debug', '打开上一轮角色扮演视图');
+    logApp('debug', '打开角色扮演视图');
   }
   const back = document.getElementById(PANEL_BACK_ID);
   if (back) back.style.visibility = viewId === HOME_VIEW_ID ? 'hidden' : 'visible';
@@ -413,12 +413,12 @@ function initPanelViews(panel) {
   if (!panel || panel.dataset.viewsReady === 'true') return;
   document.getElementById(PANEL_BACK_ID)?.addEventListener('click', () => showPanelView(HOME_VIEW_ID));
   document.getElementById(HOME_API_CARD_ID)?.addEventListener('click', () => showPanelView(API_VIEW_ID));
-  document.getElementById(HOME_LOG_CARD_ID)?.addEventListener('click', () => showPanelView(LOG_VIEW_ID));
+  document.getElementById(HOME_LOG_ICON_ID)?.addEventListener('click', () => showPanelView(LOG_VIEW_ID));
   document.getElementById(HOME_PRESET_CARD_ID)?.addEventListener('click', () => showPanelView(PRESET_VIEW_ID));
   document.getElementById(HOME_REGISTER_CARD_ID)?.addEventListener('click', () => showPanelView(REGISTER_VIEW_ID));
   document.getElementById(HOME_ARCHIVE_CARD_ID)?.addEventListener('click', () => showPanelView(ARCHIVE_VIEW_ID));
   document.getElementById(HOME_WORLDBOOK_CARD_ID)?.addEventListener('click', () => showPanelView(WORLDBOOK_VIEW_ID));
-  document.getElementById(HOME_ROUND_ID)?.addEventListener('click', () => showPanelView(ROUND_VIEW_ID));
+  document.getElementById(HOME_ROUND_CARD_ID)?.addEventListener('click', () => showPanelView(ROUND_VIEW_ID));
   document.getElementById(ROUND_COPY_ID)?.addEventListener('click', copyRoundInjectionText);
   panel.dataset.viewsReady = 'true';
 }
@@ -550,9 +550,8 @@ function createPanel() {
               <p class="soullink-home__hello">嘿，欢迎回来！</p>
               <p class="soullink-home__sub">想从哪里开始？</p>
             </div>
-            <button type="button" id="${HOME_ROUND_ID}" class="soullink-home__round" title="查看上一轮角色扮演的结果">
-              <span class="${ROUND_ICON_CLASS}"></span>
-              <span id="${HOME_ROUND_BADGE_ID}" class="soullink-home__round-badge" data-state="idle" hidden></span>
+            <button type="button" id="${HOME_LOG_ICON_ID}" class="soullink-home__mini" title="打开后台日志系统">
+              <span class="${LOG_ICON_CLASS}"></span>
             </button>
           </div>
           <div class="soullink-home__grid">
@@ -561,19 +560,22 @@ function createPanel() {
               <span class="soullink-home__card-title">API 连接</span>
               <span id="${HOME_API_STATUS_ID}" class="soullink-home__card-status" data-state="idle">尚未连接</span>
             </button>
-            <button type="button" id="${HOME_LOG_CARD_ID}" class="soullink-home__card soullink-home__card--log" title="打开后台日志系统">
-              <span class="soullink-home__card-icon"><span class="${LOG_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">日志系统</span>
-              <span id="${HOME_LOG_STATUS_ID}" class="soullink-home__card-status" data-state="idle">记录中…</span>
+            <button type="button" id="${HOME_ROUND_CARD_ID}" class="soullink-home__card soullink-home__card--round" title="查看上一轮角色扮演的结果">
+              <span class="soullink-home__card-icon">
+                <span class="${ROUND_ICON_CLASS}"></span>
+                <span id="${HOME_ROUND_BADGE_ID}" class="soullink-home__card-badge" data-state="idle" hidden></span>
+              </span>
+              <span class="soullink-home__card-title">角色扮演</span>
+              <span id="${HOME_ROUND_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无记录</span>
             </button>
             <button type="button" id="${HOME_PRESET_CARD_ID}" class="soullink-home__card soullink-home__card--preset" title="打开预设管理">
               <span class="soullink-home__card-icon"><span class="${PRESET_ICON_CLASS}"></span></span>
               <span class="soullink-home__card-title">预设</span>
               <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__card-status" data-state="idle">默认配置</span>
             </button>
-            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色扮演管理">
+            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色注册管理">
               <span class="soullink-home__card-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">角色扮演</span>
+              <span class="soullink-home__card-title">角色注册</span>
               <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无角色</span>
             </button>
             <button type="button" id="${HOME_ARCHIVE_CARD_ID}" class="soullink-home__card soullink-home__card--archive" title="打开档案系统">

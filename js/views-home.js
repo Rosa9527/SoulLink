@@ -88,13 +88,18 @@ function describeRoundOutcome(round) {
 
 function refreshHomeRoundBadge() {
   const badge = document.getElementById(HOME_ROUND_BADGE_ID);
-  const button = document.getElementById(HOME_ROUND_ID);
+  const button = document.getElementById(HOME_ROUND_CARD_ID);
+  const status = document.getElementById(HOME_ROUND_STATUS_ID);
   if (!badge || !button) return;
   const round = npcDeductionLastRound;
   if (!round) {
     badge.hidden = true;
     badge.dataset.state = 'idle';
     button.title = '查看上一轮角色扮演的结果（暂无记录）';
+    if (status) {
+      status.textContent = '暂无记录';
+      status.dataset.state = 'idle';
+    }
     return;
   }
   badge.hidden = false;
@@ -105,6 +110,10 @@ function refreshHomeRoundBadge() {
   if (round.failedNames.length) parts.push('失败 ' + round.failedNames.length);
   parts.push(describeRoundOutcome(round));
   button.title = '上一轮角色扮演 · ' + parts.join('，') + '（点击查看详情）';
+  if (status) {
+    status.textContent = describeRoundOutcome(round);
+    status.dataset.state = badge.dataset.state;
+  }
 }
 
 function buildRoundSummary(round) {

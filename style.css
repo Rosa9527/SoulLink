@@ -614,7 +614,7 @@ select.soullink-input {
   opacity: 0.65;
 }
 
-.soullink-home__round {
+.soullink-home__mini {
   position: relative;
   flex: none;
   display: inline-flex;
@@ -633,17 +633,17 @@ select.soullink-input {
   transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.soullink-home__round:hover {
+.soullink-home__mini:hover {
   background: rgba(124, 92, 191, 0.16);
   transform: rotate(-4deg) scale(1.08);
   box-shadow: 3px 3px 0 rgba(124, 92, 191, 0.3);
 }
 
-.soullink-home__round:active {
+.soullink-home__mini:active {
   transform: rotate(0deg) scale(0.94);
 }
 
-.soullink-home__round-badge {
+.soullink-home__card-badge {
   position: absolute;
   top: -3px;
   right: -3px;
@@ -655,15 +655,15 @@ select.soullink-input {
   pointer-events: none;
 }
 
-.soullink-home__round-badge[data-state='ok'] {
+.soullink-home__card-badge[data-state='ok'] {
   background: #4f9a45;
 }
 
-.soullink-home__round-badge[data-state='warn'] {
+.soullink-home__card-badge[data-state='warn'] {
   background: #e0a33b;
 }
 
-.soullink-home__round-badge[data-state='error'] {
+.soullink-home__card-badge[data-state='error'] {
   background: #d64550;
 }
 
@@ -694,7 +694,7 @@ select.soullink-input {
   transform: rotate(-1.6deg);
 }
 
-.soullink-home__card--log {
+.soullink-home__card--round {
   border-radius: 15px 235px 15px 255px / 255px 15px 235px 15px;
   transform: rotate(1.4deg);
 }
@@ -715,6 +715,7 @@ select.soullink-input {
 }
 
 .soullink-home__card-icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -731,10 +732,10 @@ select.soullink-input {
   border: 2.5px dashed var(--sl-violet);
 }
 
-.soullink-home__card--log .soullink-home__card-icon {
-  color: var(--sl-green);
-  background: rgba(123, 160, 91, 0.16);
-  border: 2.5px dashed var(--sl-green);
+.soullink-home__card--round .soullink-home__card-icon {
+  color: var(--sl-yellow);
+  background: rgba(242, 193, 78, 0.16);
+  border: 2.5px dashed var(--sl-yellow);
   transform: rotate(4deg);
 }
 

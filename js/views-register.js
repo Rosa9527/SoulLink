@@ -331,5 +331,5 @@ function initRegisterSection(panel) {
   renderRegisterList();
   renderNpcDeductionToggle();
   panel.dataset.registerReady = 'true';
-  logApp('info', '角色扮演已就绪');
+  logApp('info', '角色注册已就绪');
 }

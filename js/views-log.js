@@ -612,12 +612,6 @@ function updateLogStats() {
     paused.hidden = !logState.paused;
     if (logState.paused) paused.textContent = `已暂停 · 新增 +${logState.pausedCount}`;
   }
-  const homeStatus = document.getElementById(HOME_LOG_STATUS_ID);
-  if (homeStatus) {
-    const errors = counts.error || 0;
-    homeStatus.textContent = errors > 0 ? `已记录 ${total} 条 · ${errors} 个错误` : `已记录 ${total} 条`;
-    homeStatus.dataset.state = errors > 0 ? 'error' : (total > 0 ? 'ok' : 'idle');
-  }
   logVisibleCount = getVisibleLogEntries().length;
   syncLogNote(document.getElementById(LOG_LIST_ID));
 }

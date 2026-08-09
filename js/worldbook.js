@@ -252,12 +252,26 @@ async function getActiveWorldBookNames(ctx, result) {
   if (Array.isArray(activation?.entries)) {
     for (const entry of activation.entries) push(entry?.world);
   }
-  const character = Array.isArray(ctx?.characters) && Number.isInteger(ctx?.characterId) ? ctx.characters[ctx.characterId] : null;
+  // 标准 SillyTavern 的 ctx.characterId 是字符串（setCharacterId 统一 String(value)），
+  // TauriTavern 可能是数字；两种都要兼容，否则角色主世界书永远收集不到。
+  const characterId = ctx?.characterId;
+  const character = Array.isArray(ctx?.characters) && (Number.isInteger(characterId) || /^\d+$/.test(String(characterId ?? '')))
+    ? ctx.characters[Number(characterId)]
+    : null;
   push(character?.data?.extensions?.world);
   if (typeof globalThis.STscript === 'function') {
     try {
       const pipe = await globalThis.STscript('/getcharbook');
       push(pipe?.pipe ?? pipe);
+    } catch (error) {
+      console.warn(`[${MODULE_NAME}] /getcharbook failed`, error);
+    }
+  } else if (typeof ctx?.executeSlashCommandsWithOptions === 'function') {
+    // 标准 SillyTavern 没有全局 STscript，用 ctx 暴露的 slash 执行器兜底。
+    try {
+      const result = await ctx.executeSlashCommandsWithOptions('/getcharbook');
+      const pipe = result?.pipe;
+      if (typeof pipe === 'string' || typeof pipe === 'number') push(pipe);
     } catch (error) {
       console.warn(`[${MODULE_NAME}] /getcharbook failed`, error);
     }

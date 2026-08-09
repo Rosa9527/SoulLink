@@ -268,7 +268,7 @@ function renderArchiveList() {
   if (names.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'soullink-archive__empty';
-    empty.textContent = '名单还是空的 —— 先去「角色扮演」注册角色吧。';
+    empty.textContent = '名单还是空的 —— 先去「角色注册」注册角色吧。';
     list.appendChild(empty);
     return;
   }
