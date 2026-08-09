@@ -365,6 +365,10 @@ async function chatCompletion(settings, messages, options = {}) {
       ? Math.floor(options.maxTokens)
       : CHAT_COMPLETION_DEFAULT_MAX_TOKENS,
   };
+  // 思考强度：reasoning_effort 是 OpenAI 兼容标准参数（Ollama /v1/chat/completions
+  // 与 OpenAI 官方均支持，合法值 none/low/medium/high/max）；空值不发送，交给模型默认。
+  const reasoningEffort = String(settings?.apiReasoningEffort || '').trim();
+  if (reasoningEffort) body.reasoning_effort = reasoningEffort;
   const maxAttempts = Math.max(1, Math.min(5, Number(options.maxAttempts) > 0 ? Number(options.maxAttempts) : CHAT_COMPLETION_MAX_ATTEMPTS));
   // 并发限制：占住一个并发名额再发送；多出的请求排队等待，前面的请求完成后再放行。
   // 整个任务（含自动重试）占用同一个名额，任务结束或取消时立即释放。

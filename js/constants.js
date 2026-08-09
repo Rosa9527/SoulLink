@@ -41,6 +41,17 @@ const API_MODEL_LIST_ID = 'soullink-api-model-list';
 const API_MODEL_ID = 'soullink-api-model';
 const API_CONCURRENCY_TOGGLE_ID = 'soullink-api-concurrency-toggle';
 const API_CONCURRENCY_INPUT_ID = 'soullink-api-concurrency-input';
+const API_REASONING_EFFORT_ID = 'soullink-api-reasoning-effort';
+// 思考强度选项：reasoning_effort 是 OpenAI 兼容标准参数（Ollama /v1/chat/completions
+// 与 OpenAI 官方均支持）；none=关闭思考，low/medium/high/max=思考级别，空=不发送。
+const REASONING_EFFORT_OPTIONS = Object.freeze([
+  { value: '', label: '默认（不发送）' },
+  { value: 'none', label: '关闭思考' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'max', label: '最大' },
+]);
 const FILTER_LIST_ID = 'soullink-filter-list';
 const FILTER_STATUS_ID = 'soullink-filter-status';
 const FILTER_ADD_ID = 'soullink-filter-add';
@@ -430,6 +441,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   modelOptions: [],
   apiConcurrencyEnabled: true,
   apiConcurrencyLimit: 3,
+  apiReasoningEffort: '',
   logMaxEntries: LOG_MAX_ENTRIES_DEFAULT,
   logAutoScroll: true,
   logConsoleNoise: true,

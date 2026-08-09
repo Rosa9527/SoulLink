@@ -720,6 +720,18 @@ function createPanel() {
               </div>
               <p class="soullink-api__hint">同时最多发送的 AI 请求数（默认 3）；多出的请求会排队等待前面的请求完成后再发送。</p>
             </div>
+            <div class="soullink-api__field">
+              <span class="soullink-api__label">思考强度</span>
+              <select id="${API_REASONING_EFFORT_ID}" class="soullink-input" title="控制带思考能力模型的思考强度（reasoning_effort）">
+                <option value="">默认（不发送）</option>
+                <option value="none">关闭思考</option>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+                <option value="max">最大</option>
+              </select>
+              <p class="soullink-api__hint">仅对带思考能力的模型生效；「关闭思考」可避免模型把输出预算花在思考上导致正文为空（如精编失败），「最大」思考最充分但更慢更贵。</p>
+            </div>
             <p class="soullink-api__hint">填入接口地址与 API Key 后点「连接并拉取模型」，再从列表选择模型；不支持模型列表的渠道可直接手动填写模型名称。</p>
           </div>
           <div class="soullink-panel__section soullink-filter">

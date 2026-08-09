@@ -89,6 +89,17 @@ const API_MODEL_LIST_ID = 'soullink-api-model-list';
 const API_MODEL_ID = 'soullink-api-model';
 const API_CONCURRENCY_TOGGLE_ID = 'soullink-api-concurrency-toggle';
 const API_CONCURRENCY_INPUT_ID = 'soullink-api-concurrency-input';
+const API_REASONING_EFFORT_ID = 'soullink-api-reasoning-effort';
+// 思考强度选项：reasoning_effort 是 OpenAI 兼容标准参数（Ollama /v1/chat/completions
+// 与 OpenAI 官方均支持）；none=关闭思考，low/medium/high/max=思考级别，空=不发送。
+const REASONING_EFFORT_OPTIONS = Object.freeze([
+  { value: '', label: '默认（不发送）' },
+  { value: 'none', label: '关闭思考' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'max', label: '最大' },
+]);
 const FILTER_LIST_ID = 'soullink-filter-list';
 const FILTER_STATUS_ID = 'soullink-filter-status';
 const FILTER_ADD_ID = 'soullink-filter-add';
@@ -478,6 +489,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   modelOptions: [],
   apiConcurrencyEnabled: true,
   apiConcurrencyLimit: 3,
+  apiReasoningEffort: '',
   logMaxEntries: LOG_MAX_ENTRIES_DEFAULT,
   logAutoScroll: true,
   logConsoleNoise: true,
@@ -1726,6 +1738,18 @@ function createPanel() {
               </div>
               <p class="soullink-api__hint">同时最多发送的 AI 请求数（默认 3）；多出的请求会排队等待前面的请求完成后再发送。</p>
             </div>
+            <div class="soullink-api__field">
+              <span class="soullink-api__label">思考强度</span>
+              <select id="${API_REASONING_EFFORT_ID}" class="soullink-input" title="控制带思考能力模型的思考强度（reasoning_effort）">
+                <option value="">默认（不发送）</option>
+                <option value="none">关闭思考</option>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+                <option value="max">最大</option>
+              </select>
+              <p class="soullink-api__hint">仅对带思考能力的模型生效；「关闭思考」可避免模型把输出预算花在思考上导致正文为空（如精编失败），「最大」思考最充分但更慢更贵。</p>
+            </div>
             <p class="soullink-api__hint">填入接口地址与 API Key 后点「连接并拉取模型」，再从列表选择模型；不支持模型列表的渠道可直接手动填写模型名称。</p>
           </div>
           <div class="soullink-panel__section soullink-filter">
@@ -2060,6 +2084,8 @@ function applyApiSettingsToForm(ctx) {
   setValue(API_URL_ID, settings.apiUrl);
   setValue(API_KEY_ID, settings.apiKey);
   setValue(API_MODEL_ID, settings.model);
+  const effortSelect = document.getElementById(API_REASONING_EFFORT_ID);
+  if (effortSelect) effortSelect.value = String(settings.apiReasoningEffort || '');
   renderApiConcurrencyControl();
   populateModelList(settings);
   if (settings.modelOptions.length > 0) {
@@ -2124,6 +2150,15 @@ function initApiSection(panel) {
   concurrencyInput?.addEventListener('change', (event) => {
     if (!event.target) return;
     event.target.value = clampApiConcurrencyLimit(event.target.value);
+  });
+
+  document.getElementById(API_REASONING_EFFORT_ID)?.addEventListener('change', (event) => {
+    const ctx = getCtx();
+    if (!ctx) return;
+    const settings = getSettings(ctx);
+    settings.apiReasoningEffort = String(event.target?.value || '');
+    saveSettings(ctx);
+    logApp('info', '思考强度已设置', settings.apiReasoningEffort || '默认（不发送）');
   });
 
   try {
@@ -5770,6 +5805,10 @@ async function chatCompletion(settings, messages, options = {}) {
       ? Math.floor(options.maxTokens)
       : CHAT_COMPLETION_DEFAULT_MAX_TOKENS,
   };
+  // 思考强度：reasoning_effort 是 OpenAI 兼容标准参数（Ollama /v1/chat/completions
+  // 与 OpenAI 官方均支持，合法值 none/low/medium/high/max）；空值不发送，交给模型默认。
+  const reasoningEffort = String(settings?.apiReasoningEffort || '').trim();
+  if (reasoningEffort) body.reasoning_effort = reasoningEffort;
   const maxAttempts = Math.max(1, Math.min(5, Number(options.maxAttempts) > 0 ? Number(options.maxAttempts) : CHAT_COMPLETION_MAX_ATTEMPTS));
   // 并发限制：占住一个并发名额再发送；多出的请求排队等待，前面的请求完成后再放行。
   // 整个任务（含自动重试）占用同一个名额，任务结束或取消时立即释放。

@@ -116,6 +116,8 @@ function applyApiSettingsToForm(ctx) {
   setValue(API_URL_ID, settings.apiUrl);
   setValue(API_KEY_ID, settings.apiKey);
   setValue(API_MODEL_ID, settings.model);
+  const effortSelect = document.getElementById(API_REASONING_EFFORT_ID);
+  if (effortSelect) effortSelect.value = String(settings.apiReasoningEffort || '');
   renderApiConcurrencyControl();
   populateModelList(settings);
   if (settings.modelOptions.length > 0) {
@@ -180,6 +182,15 @@ function initApiSection(panel) {
   concurrencyInput?.addEventListener('change', (event) => {
     if (!event.target) return;
     event.target.value = clampApiConcurrencyLimit(event.target.value);
+  });
+
+  document.getElementById(API_REASONING_EFFORT_ID)?.addEventListener('change', (event) => {
+    const ctx = getCtx();
+    if (!ctx) return;
+    const settings = getSettings(ctx);
+    settings.apiReasoningEffort = String(event.target?.value || '');
+    saveSettings(ctx);
+    logApp('info', '思考强度已设置', settings.apiReasoningEffort || '默认（不发送）');
   });
 
   try {
