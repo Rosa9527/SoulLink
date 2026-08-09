@@ -1652,8 +1652,9 @@ select.soullink-input {
 
 .soullink-archive__toolbar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -1761,6 +1762,7 @@ select.soullink-input {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  flex: 1 1 100%;
 }
 
 .soullink-archive__refine-all {
@@ -1775,7 +1777,6 @@ select.soullink-input {
 
 .soullink-archive__analyze-all {
   flex: none;
-  align-self: flex-end;
   min-width: 148px;
   padding: 7px 12px;
   font-size: 12.5px;

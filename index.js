@@ -47,7 +47,7 @@ const PREVIOUS_DEFAULT_PROMPTS = Object.freeze({
 
 // ===== js/constants.js =====
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.3.1';
+const MODULE_VERSION = '1.3.2';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
