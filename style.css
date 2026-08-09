@@ -2212,6 +2212,7 @@ button.soullink-archive__status:active {
   transform: rotate(1.5deg);
 }
 
+.soullink-archive__card.is-collapsed .soullink-archive__status,
 .soullink-archive__card.is-collapsed .soullink-archive__card-actions,
 .soullink-archive__card.is-collapsed .soullink-archive__body {
   display: none;

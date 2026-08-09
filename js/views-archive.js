@@ -101,9 +101,9 @@ function buildArchiveCard(name, archive) {
 
   const actions = document.createElement('div');
   actions.className = 'soullink-archive__card-actions';
-  actions.append(status, analyzeBtn, refineBtn, editBtn);
+  actions.append(analyzeBtn, refineBtn, editBtn);
 
-  head.append(nameNode, collapseBtn, actions);
+  head.append(nameNode, status, collapseBtn, actions);
   card.appendChild(head);
   card.appendChild(archiveEditState[name]
     ? buildArchiveEditBody(name, archive)
