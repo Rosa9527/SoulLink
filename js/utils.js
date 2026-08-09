@@ -322,7 +322,9 @@ function responseContainsUsableText(responseText) {
   if (typeof content === 'string' && content.trim()) return true;
   // deepseek-v4-flash 等带思考能力的模型偶发把最终答案写进 reasoning_content、
   // content 留空（finish_reason=stop）——此时响应仍有可用文本，不应判为代理损坏。
-  const reasoning = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content : '';
+  const reasoning = typeof choice?.message?.reasoning_content === 'string'
+    ? choice.message.reasoning_content
+    : (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : '');
   return Boolean(reasoning.trim());
 }
 

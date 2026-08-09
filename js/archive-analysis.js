@@ -331,7 +331,9 @@ async function requestChatCompletionOnce(apiBase, settings, body, signal) {
     // deepseek-v4-flash 等带思考能力的模型偶发把最终答案写进 reasoning_content、
     // content 留空（finish_reason=stop，usage 全部计入 reasoning_tokens）——
     // 实测回复内容完整可用，直接兜底取用，避免误判「AI 未返回文本内容」。
-    const reasoning = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content : '';
+    const reasoning = typeof choice?.message?.reasoning_content === 'string'
+      ? choice.message.reasoning_content
+      : (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : '');
     if (reasoning.trim()) {
       logApp('warn', 'AI 回复内容位于 reasoning_content 字段', `${transport} · ${reasoning.length} 字符`);
       return { content: reasoning, transport };
@@ -540,7 +542,7 @@ async function analyzeCharacter(name) {
   let rawContent = '';
   try {
     const messages = await buildArchiveAnalysisMessages(name, archive, prompt);
-    rawContent = await chatCompletion(settings, messages, { signal: controller.signal });
+    rawContent = await chatCompletion(settings, messages, { signal: controller.signal, maxTokens: ARCHIVE_REFINE_MAX_TOKENS });
     const diff = parseAgentJson(rawContent);
     const changes = applyArchiveDiff(archive, diff, getCurrentFloorSignature(ctx));
     archive.updatedAt = Date.now();

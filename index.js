@@ -242,6 +242,10 @@ const CHAT_COMPLETION_RETRY_DELAY_MS = 600;
 // 预算，返回「200 + content 为空 + finish_reason=length」，重试无法自愈。
 // 显式给足输出预算（deepseek-chat 上限 8192）可根治这类空回复。
 const CHAT_COMPLETION_DEFAULT_MAX_TOKENS = 8192;
+// 档案精编输出预算：精编输出的是整理后的完整档案（比分析的增量 diff 大得多），
+// 且 DeepSeek 推理模型的 max_tokens 同时包含思维链与最终答案——给足预算避免
+// 模型思考阶段就耗尽输出、正文留空（finish_reason=length）。
+const ARCHIVE_REFINE_MAX_TOKENS = 16384;
 const ARCHIVE_RECENT_MESSAGE_COUNT = 4;
 // 消息正则过滤：档案分析 / 档案预筛 / 角色扮演预筛 / 角色推演这四种调用都会把
 // 最近的几条消息作为上下文，先按启用的正则把每条消息内容中匹配的部分剔除，
@@ -818,7 +822,9 @@ function responseContainsUsableText(responseText) {
   if (typeof content === 'string' && content.trim()) return true;
   // deepseek-v4-flash 等带思考能力的模型偶发把最终答案写进 reasoning_content、
   // content 留空（finish_reason=stop）——此时响应仍有可用文本，不应判为代理损坏。
-  const reasoning = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content : '';
+  const reasoning = typeof choice?.message?.reasoning_content === 'string'
+    ? choice.message.reasoning_content
+    : (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : '');
   return Boolean(reasoning.trim());
 }
 
@@ -5730,7 +5736,9 @@ async function requestChatCompletionOnce(apiBase, settings, body, signal) {
     // deepseek-v4-flash 等带思考能力的模型偶发把最终答案写进 reasoning_content、
     // content 留空（finish_reason=stop，usage 全部计入 reasoning_tokens）——
     // 实测回复内容完整可用，直接兜底取用，避免误判「AI 未返回文本内容」。
-    const reasoning = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content : '';
+    const reasoning = typeof choice?.message?.reasoning_content === 'string'
+      ? choice.message.reasoning_content
+      : (typeof choice?.message?.reasoning === 'string' ? choice.message.reasoning : '');
     if (reasoning.trim()) {
       logApp('warn', 'AI 回复内容位于 reasoning_content 字段', `${transport} · ${reasoning.length} 字符`);
       return { content: reasoning, transport };
@@ -5939,7 +5947,7 @@ async function analyzeCharacter(name) {
   let rawContent = '';
   try {
     const messages = await buildArchiveAnalysisMessages(name, archive, prompt);
-    rawContent = await chatCompletion(settings, messages, { signal: controller.signal });
+    rawContent = await chatCompletion(settings, messages, { signal: controller.signal, maxTokens: ARCHIVE_REFINE_MAX_TOKENS });
     const diff = parseAgentJson(rawContent);
     const changes = applyArchiveDiff(archive, diff, getCurrentFloorSignature(ctx));
     archive.updatedAt = Date.now();

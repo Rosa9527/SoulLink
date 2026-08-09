@@ -194,6 +194,10 @@ const CHAT_COMPLETION_RETRY_DELAY_MS = 600;
 // 预算，返回「200 + content 为空 + finish_reason=length」，重试无法自愈。
 // 显式给足输出预算（deepseek-chat 上限 8192）可根治这类空回复。
 const CHAT_COMPLETION_DEFAULT_MAX_TOKENS = 8192;
+// 档案精编输出预算：精编输出的是整理后的完整档案（比分析的增量 diff 大得多），
+// 且 DeepSeek 推理模型的 max_tokens 同时包含思维链与最终答案——给足预算避免
+// 模型思考阶段就耗尽输出、正文留空（finish_reason=length）。
+const ARCHIVE_REFINE_MAX_TOKENS = 16384;
 const ARCHIVE_RECENT_MESSAGE_COUNT = 4;
 // 消息正则过滤：档案分析 / 档案预筛 / 角色扮演预筛 / 角色推演这四种调用都会把
 // 最近的几条消息作为上下文，先按启用的正则把每条消息内容中匹配的部分剔除，
