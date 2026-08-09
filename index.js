@@ -42,11 +42,21 @@ const PREVIOUS_DEFAULT_PROMPTS = Object.freeze({
 
 // ===== js/constants.js =====
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.1.5';
+const MODULE_VERSION = '1.1.8';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
 const VERSION_CHECK_ID = 'soullink-version-check';
+const THEME_ID = 'soullink-theme';
+const THEME_MENU_ID = 'soullink-theme-menu';
+// 主题注册表：id 对应 style.css 中 [data-theme='...'] 的变量覆盖；name 显示在按钮与菜单里。
+// 目前只有默认「手绘涂鸦」一个主题，后续新增主题只需在此追加条目并在 style.css 补变量覆盖。
+const DEFAULT_THEME = 'paper';
+const THEMES = Object.freeze([
+  { id: 'paper', name: '手绘涂鸦' },
+  { id: 'qq', name: '聊天气泡' },
+  { id: 'gufeng', name: '古风典雅' },
+]);
 // 版本检查结果缓存时长：1 小时内不重复联网，点击提示可强制重新检查。
 const VERSION_CHECK_CACHE_MS = 60 * 60 * 1000;
 
@@ -467,6 +477,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   archives: {},
   worldInfo: { excluded: {} },
   messageFilters: MESSAGE_FILTERS_DEFAULT,
+  theme: DEFAULT_THEME,
 });
 
 const FALLBACK_SETTINGS_STORE = new WeakMap();
@@ -1170,6 +1181,7 @@ function createSphere() {
   sphere.setAttribute('aria-label', MODULE_NAME);
   sphere.innerHTML = `<span class="${MENU_ICON_CLASS} soullink-sphere__icon"></span>`;
   document.body.appendChild(sphere);
+  applyTheme(getCurrentTheme());
   initDraggableSphere(sphere);
   return sphere;
 }
@@ -1266,6 +1278,11 @@ function closePanel() {
   if (!panel) return;
   logApp('debug', '面板已关闭');
   panel.classList.remove('is-open');
+  const themeMenu = document.getElementById(THEME_MENU_ID);
+  if (themeMenu) {
+    themeMenu.setAttribute('hidden', '');
+    document.getElementById(THEME_ID)?.setAttribute('aria-expanded', 'false');
+  }
   panel.setAttribute('aria-hidden', 'true');
   showSphere();
   if (confirmResolve) settleConfirm(false);
@@ -1511,6 +1528,95 @@ async function checkLatestVersion(force = false) {
   }
 }
 
+// ---------- 主题切换 ----------
+function getCurrentTheme() {
+  try {
+    const ctx = getContextSafe();
+    const settings = ctx ? getSettings(ctx) : null;
+    const id = settings?.theme;
+    return THEMES.some((theme) => theme.id === id) ? id : DEFAULT_THEME;
+  } catch (error) {
+    logApp('warn', `读取主题设置失败: ${String(error?.message || error)}`);
+    return DEFAULT_THEME;
+  }
+}
+
+function applyTheme(themeId) {
+  const id = THEMES.some((theme) => theme.id === themeId) ? themeId : DEFAULT_THEME;
+  const panel = getPanel();
+  const sphere = getSphere();
+  if (panel) panel.dataset.theme = id;
+  if (sphere) sphere.dataset.theme = id;
+  const theme = THEMES.find((item) => item.id === id);
+  const button = document.getElementById(THEME_ID);
+  if (button && theme) button.textContent = '🎨 ' + theme.name;
+  return id;
+}
+
+function initThemeSection(panel) {
+  if (!panel || panel.dataset.themeReady === 'true') return;
+  const button = document.getElementById(THEME_ID);
+  const menu = document.getElementById(THEME_MENU_ID);
+  if (!button || !menu) return;
+
+  const closeThemeMenu = () => {
+    menu.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+  };
+
+  const renderThemeMenu = () => {
+    const current = getCurrentTheme();
+    menu.innerHTML = '';
+    for (const theme of THEMES) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'soullink-panel__theme-option';
+      item.dataset.themeId = theme.id;
+      item.textContent = theme.name;
+      item.setAttribute('role', 'menuitemradio');
+      item.setAttribute('aria-checked', String(theme.id === current));
+      if (theme.id === current) item.classList.add('is-active');
+      item.addEventListener('click', () => {
+        try {
+          const ctx = getContextSafe();
+          const settings = ctx ? getSettings(ctx) : null;
+          if (settings) {
+            settings.theme = theme.id;
+            saveSettings(ctx);
+          }
+        } catch (error) {
+          logApp('warn', `保存主题失败: ${String(error?.message || error)}`);
+        }
+        applyTheme(theme.id);
+        closeThemeMenu();
+      });
+      menu.appendChild(item);
+    }
+  };
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (menu.hidden) {
+      renderThemeMenu();
+      menu.hidden = false;
+      button.setAttribute('aria-expanded', 'true');
+    } else {
+      closeThemeMenu();
+    }
+  });
+  document.addEventListener('click', (event) => {
+    if (menu.hidden) return;
+    if (event.target instanceof Element && typeof event.target.closest === 'function'
+      && event.target.closest('#' + THEME_ID + ', #' + THEME_MENU_ID)) return;
+    closeThemeMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !menu.hidden) closeThemeMenu();
+  });
+
+  applyTheme(getCurrentTheme());
+  panel.dataset.themeReady = 'true';
+}
 function createPanel() {
   let panel = getPanel();
   if (panel) return panel;
@@ -1781,7 +1887,13 @@ function createPanel() {
           v${MODULE_VERSION}
           <button type="button" id="${VERSION_CHECK_ID}" class="soullink-panel__version-check" data-state="checking" title="正在联网检查 GitHub 上的最新版本">检查更新…</button>
         </span>
-        <a class="soullink-panel__link" href="${GITHUB_REPO_URL}" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <span class="soullink-panel__footer-actions">
+          <span class="soullink-panel__theme-wrap">
+            <button type="button" id="${THEME_ID}" class="soullink-panel__theme" aria-haspopup="menu" aria-expanded="false" title="切换主题">🎨 手绘涂鸦</button>
+            <div id="${THEME_MENU_ID}" class="soullink-panel__theme-menu" role="menu" hidden></div>
+          </span>
+          <a class="soullink-panel__link" href="${GITHUB_REPO_URL}" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </span>
       </div>
     </div>
   `;
@@ -1790,6 +1902,7 @@ function createPanel() {
   initApiSection(panel);
   initFilterSection(panel);
   initPanelViews(panel);
+  initThemeSection(panel);
   initLogView(panel);
   initPresetSection(panel);
   initRegisterSection(panel);

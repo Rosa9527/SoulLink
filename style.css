@@ -18,6 +18,9 @@
   --sl-font: "Comic Sans MS", "Segoe Print", "KaiTi", "楷体", "STKaiti", "FangSong", "仿宋", cursive;
 }
 
+/* 主题机制：面板与悬浮球通过 data-theme 属性切换主题；默认变量即「手绘涂鸦」，
+   后续新增主题只需在 THEMES 注册并在下方追加 [data-theme='xxx'] 变量覆盖。 */
+
 /* ---------- 悬浮球：纸片小贴纸 ---------- */
 .soullink-sphere {
   position: fixed;
@@ -1505,6 +1508,75 @@ select.soullink-input {
   color: var(--sl-pink);
   border-color: var(--sl-pink);
 }
+
+/* ---------- 主题切换 ---------- */
+.soullink-panel__footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.soullink-panel__theme-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.soullink-panel__theme {
+  font-family: var(--sl-font);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1.5px dashed var(--sl-ink-soft);
+  background: transparent;
+  color: var(--sl-ink-soft);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.soullink-panel__theme:hover {
+  color: var(--sl-ink);
+  border-color: var(--sl-ink);
+}
+
+.soullink-panel__theme-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  min-width: 130px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--sl-paper);
+  border: 2px solid var(--sl-ink);
+  border-radius: 10px 18px 10px 18px / 18px 10px 18px 10px;
+  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.25);
+}
+
+.soullink-panel__theme-option {
+  font-family: var(--sl-font);
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: left;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sl-ink);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.soullink-panel__theme-option:hover {
+  background: rgba(242, 193, 78, 0.3);
+}
+
+.soullink-panel__theme-option.is-active {
+  color: var(--sl-violet);
+  font-weight: bold;
+}
 /* ---------- 角色注册（注册系统） ---------- */
 .soullink-home__card--register {
   border-radius: 235px 15px 255px 15px / 15px 255px 15px 235px;
@@ -2668,4 +2740,1227 @@ button.soullink-archive__status:active {
 .soullink-archive-error__close-btn.soullink-btn {
   color: var(--sl-ink);
   background: var(--sl-paper-deep);
+}
+
+/* =========================================================
+   SoulLink · 聊天气泡风格（qq）
+   浅灰底 + 白色圆角卡片 + QQ 蓝渐变主色；覆盖手绘涂鸦的
+   不规则圆角 / 抖动滤镜 / 旋转 / 虚线描边。
+   用 :where() 保持与基础规则同等的特异性，ok/error 等
+   [data-state] 状态色仍由各自的原规则继续生效。
+   ========================================================= */
+
+.soullink-sphere:where([data-theme='qq']),
+.soullink-panel:where([data-theme='qq']) {
+  --sl-ink: #1f2329;
+  --sl-ink-soft: rgba(31, 35, 41, 0.4);
+  --sl-paper: #f2f3f5;
+  --sl-paper-deep: #e9ebee;
+  --sl-violet: #12b7f5;
+  --sl-pink: #ff5b5b;
+  --sl-yellow: #ffb800;
+  --sl-green: #07c160;
+  --sl-blue: #12b7f5;
+  --sl-font: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+/* 悬浮球：QQ 蓝圆形按钮 */
+.soullink-sphere:where([data-theme='qq']) {
+  color: #fff;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
+  border: none;
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.25),
+    0 6px 16px rgba(18, 183, 245, 0.4);
+  filter: none;
+  transform: none;
+}
+
+.soullink-sphere:where([data-theme='qq'])::before {
+  display: none;
+}
+
+.soullink-sphere:where([data-theme='qq']) .soullink-sphere__icon {
+  transform: none;
+}
+
+.soullink-sphere:where([data-theme='qq']):hover {
+  animation: none;
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.25),
+    0 8px 20px rgba(18, 183, 245, 0.5);
+  transform: scale(1.05);
+}
+
+.soullink-sphere:where([data-theme='qq']):active {
+  transform: scale(0.94);
+}
+
+.soullink-sphere:where([data-theme='qq']).is-dragging {
+  transform: scale(1.06);
+}
+
+/* 面板：白色圆角卡片 */
+.soullink-panel:where([data-theme='qq']) .soullink-panel__dialog {
+  border-radius: 12px;
+  background: #fff;
+  border: none;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__dialog.is-dragging {
+  transform: none;
+}
+
+/* 标题栏：QQ 蓝渐变 */
+.soullink-panel:where([data-theme='qq']) .soullink-panel__header {
+  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__header::after {
+  display: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__logo {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
+  border: none;
+  border-radius: 50%;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__title {
+  color: #fff;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__title::after {
+  display: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__close,
+.soullink-panel:where([data-theme='qq']) .soullink-panel__back {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__close:hover,
+.soullink-panel:where([data-theme='qq']) .soullink-panel__back:hover {
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(1.1);
+}
+
+/* 内容区：浅灰底 */
+.soullink-panel:where([data-theme='qq']) .soullink-panel__body {
+  background: #f7f8fa;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border: none;
+  border-radius: 999px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__badge {
+  border-radius: 999px;
+  border: none;
+  background: rgba(18, 183, 245, 0.1);
+  color: #0a8fd4;
+  transform: none;
+}
+
+/* 区块标题 / 提示条 */
+.soullink-panel:where([data-theme='qq']) .soullink-panel__section-title {
+  background: rgba(18, 183, 245, 0.1);
+  border: none;
+  border-radius: 8px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-preset__note,
+.soullink-panel:where([data-theme='qq']) .soullink-register__note,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__note,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__note {
+  background: rgba(18, 183, 245, 0.06);
+  border: none;
+  border-radius: 8px;
+  transform: none;
+}
+
+/* 输入框 */
+.soullink-panel:where([data-theme='qq']) .soullink-input {
+  border-radius: 8px;
+  background: #f7f8fa;
+  border: 1.5px solid #e5e6eb;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-input:focus {
+  border-color: #12b7f5;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(18, 183, 245, 0.15);
+  transform: none;
+}
+
+/* 主按钮：QQ 蓝 */
+.soullink-panel:where([data-theme='qq']) .soullink-btn {
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
+  box-shadow: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: none;
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn:active:not(:disabled) {
+  filter: brightness(0.95);
+  transform: scale(0.98);
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn:disabled {
+  border-style: none;
+  opacity: 0.5;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn--ghost {
+  color: #12b7f5;
+  background: rgba(18, 183, 245, 0.08);
+  border: 1.5px solid rgba(18, 183, 245, 0.4);
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn--ghost:hover:not(:disabled) {
+  background: rgba(18, 183, 245, 0.14);
+}
+
+/* 首页 */
+.soullink-panel:where([data-theme='qq']) .soullink-home__note {
+  background: rgba(18, 183, 245, 0.08);
+  border: none;
+  border-radius: 10px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__mini {
+  color: #12b7f5;
+  background: #fff;
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__mini:hover {
+  background: rgba(18, 183, 245, 0.1);
+  box-shadow: none;
+  transform: scale(1.06);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card {
+  background: #fff;
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card:active {
+  transform: scale(0.97);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card-icon {
+  border-radius: 50%;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card--api .soullink-home__card-icon {
+  color: #12b7f5;
+  background: rgba(18, 183, 245, 0.1);
+  border: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card--round .soullink-home__card-icon {
+  color: #ffb800;
+  background: rgba(255, 184, 0, 0.12);
+  border: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card--preset .soullink-home__card-icon {
+  color: #ff5b5b;
+  background: rgba(255, 91, 91, 0.1);
+  border: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card--register .soullink-home__card-icon {
+  color: #07c160;
+  background: rgba(7, 193, 96, 0.1);
+  border: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card--archive .soullink-home__card-icon {
+  color: #12b7f5;
+  background: rgba(18, 183, 245, 0.1);
+  border: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card--worldbook .soullink-home__card-icon {
+  color: #ffb800;
+  background: rgba(255, 184, 0, 0.12);
+  border: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-home__card-status {
+  border-radius: 999px;
+  border: none;
+  background: rgba(18, 183, 245, 0.1);
+  color: #0a8fd4;
+  transform: none;
+}
+
+/* 状态胶囊（idle 态；ok/error 等状态色由原规则继续生效） */
+.soullink-panel:where([data-theme='qq']) .soullink-api__status,
+.soullink-panel:where([data-theme='qq']) .soullink-round__outcome,
+.soullink-panel:where([data-theme='qq']) .soullink-preset__status,
+.soullink-panel:where([data-theme='qq']) .soullink-register__status,
+.soullink-panel:where([data-theme='qq']) .soullink-register__chat,
+.soullink-panel:where([data-theme='qq']) .soullink-register__npc-status,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__count,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__chat,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__status,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__status,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__chat,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__status,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__valid {
+  border-radius: 999px;
+  border: none;
+  background: rgba(18, 183, 245, 0.1);
+  color: #0a8fd4;
+  transform: none;
+}
+
+/* 角色扮演视图 */
+.soullink-panel:where([data-theme='qq']) .soullink-round__empty,
+.soullink-panel:where([data-theme='qq']) .soullink-round__summary-inner,
+.soullink-panel:where([data-theme='qq']) .soullink-round__character,
+.soullink-panel:where([data-theme='qq']) .soullink-round__inject-text,
+.soullink-panel:where([data-theme='qq']) .soullink-round__gate-text {
+  background: #fff;
+  border: 1.5px solid #e5e6eb;
+  border-radius: 10px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-round__character-head {
+  background: rgba(18, 183, 245, 0.06);
+  border-bottom: 1px solid #e5e6eb;
+  border-radius: 10px 10px 0 0;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-round__stat {
+  background: #f7f8fa;
+  border: none;
+  border-radius: 8px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-round__character-tag {
+  background: rgba(18, 183, 245, 0.08);
+  border: none;
+  border-radius: 999px;
+}
+
+/* 日志系统 */
+.soullink-panel:where([data-theme='qq']) .soullink-log__chip,
+.soullink-panel:where([data-theme='qq']) .soullink-log__action,
+.soullink-panel:where([data-theme='qq']) .soullink-preset__tab {
+  border-radius: 999px;
+  border: 1.5px solid #e5e6eb;
+  background: #fff;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-log__chip.is-active,
+.soullink-panel:where([data-theme='qq']) .soullink-log__action.is-active,
+.soullink-panel:where([data-theme='qq']) .soullink-preset__tab.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
+  border-color: transparent;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-log__console {
+  background: #1f2329;
+  border: none;
+  border-radius: 10px;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-log__back {
+  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-log__paused {
+  background: rgba(255, 184, 0, 0.12);
+  border: none;
+}
+
+/* 注册 / 档案 / 世界书 / 过滤：白色圆角条目 */
+.soullink-panel:where([data-theme='qq']) .soullink-register__item,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__card,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__book,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__row {
+  background: #fff;
+  border: 1.5px solid #e5e6eb;
+  border-radius: 10px;
+  box-shadow: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-register__item:hover,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__row:hover {
+  background: #f7f8fa;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__book-head,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__section {
+  border-color: #e5e6eb;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-register__empty,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__empty,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__empty,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__book-empty,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__empty {
+  background: #fff;
+  border: 1.5px dashed #d0d3d9;
+  border-radius: 10px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-register__unregister {
+  background: rgba(255, 91, 91, 0.08);
+  border: 1.5px solid rgba(255, 91, 91, 0.5);
+  border-radius: 999px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-register__unregister:hover {
+  background: rgba(255, 91, 91, 0.16);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-archive__analyze {
+  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
+  border: none;
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-archive__analyze:hover:not(:disabled) {
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-archive__edit {
+  background: #fff;
+  border: 1.5px solid #e5e6eb;
+  border-radius: 8px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-archive__edit:hover {
+  background: rgba(18, 183, 245, 0.08);
+  border-color: #12b7f5;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__banner {
+  background: rgba(255, 184, 0, 0.1);
+  border: 1.5px solid rgba(255, 184, 0, 0.5);
+  border-radius: 8px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__search {
+  background: #f7f8fa;
+  border: 1.5px solid #e5e6eb;
+  border-radius: 999px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__search:focus {
+  border-color: #12b7f5;
+  box-shadow: 0 0 0 3px rgba(18, 183, 245, 0.15);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__entry:hover {
+  background: rgba(18, 183, 245, 0.06);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__entry input[type='checkbox'] {
+  accent-color: #12b7f5;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__badge {
+  border: 1px solid #e5e6eb;
+  background: #f7f8fa;
+}
+
+/* 过滤编辑区 / 开关 */
+.soullink-panel:where([data-theme='qq']) .soullink-filter__editor {
+  background: #f7f8fa;
+  border: 1.5px solid #e5e6eb;
+  border-radius: 10px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle span {
+  background: #d0d3d9;
+  border: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle span::after {
+  border: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle input:checked + span {
+  background: #12b7f5;
+  border-color: transparent;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle input:checked + span::after {
+  background: #fff;
+}
+
+/* 小图标按钮 */
+.soullink-panel:where([data-theme='qq']) .soullink-icon-btn,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__action,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__collapse {
+  border-radius: 8px;
+  border: 1.5px solid #e5e6eb;
+  background: #fff;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-icon-btn:hover,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__action:hover,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__collapse:hover {
+  background: rgba(18, 183, 245, 0.08);
+  border-color: #12b7f5;
+  transform: none;
+}
+
+/* 底部与主题菜单 */
+.soullink-panel:where([data-theme='qq']) .soullink-panel__footer {
+  border-top: 1px solid #e5e6eb;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__link {
+  color: #12b7f5;
+  text-decoration: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__link:hover {
+  color: #0a8fd4;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__version-check,
+.soullink-panel:where([data-theme='qq']) .soullink-panel__theme {
+  border: 1.5px solid #e5e6eb;
+  background: #fff;
+  color: #6b7280;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__version-check:hover,
+.soullink-panel:where([data-theme='qq']) .soullink-panel__theme:hover {
+  color: #12b7f5;
+  border-color: #12b7f5;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__theme-menu {
+  background: #fff;
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__theme-option:hover {
+  background: rgba(18, 183, 245, 0.08);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__theme-option.is-active {
+  color: #12b7f5;
+}
+
+/* 确认弹层 / 分析失败弹层 */
+.soullink-panel:where([data-theme='qq']) .soullink-confirm,
+.soullink-panel:where([data-theme='qq']) .soullink-archive-error {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-confirm__card,
+.soullink-panel:where([data-theme='qq']) .soullink-archive-error__card {
+  background: #fff;
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-archive-error__hint {
+  background: rgba(255, 91, 91, 0.08);
+  border: 1.5px solid rgba(255, 91, 91, 0.4);
+  border-radius: 8px;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-archive-error__content {
+  background: #f7f8fa;
+  border: 1.5px solid #e5e6eb;
+  border-radius: 8px;
+}
+
+/* =========================================================
+   SoulLink · 古风典雅风格（gufeng）
+   宣纸底 + 墨色描边 + 朱砂印章 + 鎏金点缀；去掉手绘抖动 /
+   不规则圆角 / 旋转 / 虚线描边，改用方正的印章式直角圆角。
+   用 :where() 保持与基础规则同等的特异性，ok/error 等
+   [data-state] 状态色仍由各自的原规则继续生效。
+   ========================================================= */
+
+.soullink-sphere:where([data-theme='gufeng']),
+.soullink-panel:where([data-theme='gufeng']) {
+  --sl-ink: #3b332a;
+  --sl-ink-soft: rgba(59, 51, 42, 0.45);
+  --sl-paper: #f7f1e3;
+  --sl-paper-deep: #efe6d2;
+  --sl-violet: #a63a2e;
+  --sl-pink: #c2553f;
+  --sl-yellow: #b8862f;
+  --sl-green: #5f7f5a;
+  --sl-blue: #4f6d7a;
+  --sl-font: "KaiTi", "楷体", "STKaiti", "FangSong", "仿宋", "SimSun", "宋体", serif;
+}
+
+/* 悬浮球：朱砂印章 */
+.soullink-sphere:where([data-theme='gufeng']) {
+  color: #fdf6e3;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #b03a2e, #98332a);
+  border: 1.5px solid #7c2a21;
+  box-shadow:
+    inset 0 0 0 2px rgba(253, 246, 227, 0.22),
+    0 4px 10px rgba(59, 51, 42, 0.35);
+  filter: none;
+  transform: none;
+}
+
+.soullink-sphere:where([data-theme='gufeng'])::before {
+  display: none;
+}
+
+.soullink-sphere:where([data-theme='gufeng']) .soullink-sphere__icon {
+  transform: none;
+}
+
+.soullink-sphere:where([data-theme='gufeng']):hover {
+  animation: none;
+  transform: translateY(-2px) scale(1.04);
+  box-shadow:
+    inset 0 0 0 2px rgba(253, 246, 227, 0.22),
+    0 6px 14px rgba(166, 58, 46, 0.45);
+}
+
+.soullink-sphere:where([data-theme='gufeng']):active {
+  transform: scale(0.94);
+}
+
+.soullink-sphere:where([data-theme='gufeng']).is-dragging {
+  transform: scale(1.06);
+}
+
+/* 面板：宣纸卷轴卡 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__dialog {
+  border-radius: 8px;
+  background: #f7f1e3;
+  border: 1.5px solid rgba(59, 51, 42, 0.75);
+  box-shadow: 0 10px 28px rgba(59, 51, 42, 0.28);
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__dialog.is-dragging {
+  transform: none;
+}
+
+/* 标题栏：墨色横批 + 鎏金底边 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__header {
+  background: linear-gradient(180deg, #4b4238, #3b332a);
+  border-bottom: 2px solid #b8862f;
+  border-radius: 8px 8px 0 0;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__header::after {
+  content: '❖';
+  color: #c9a227;
+  font-size: 12px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__logo {
+  color: #fdf6e3;
+  background: linear-gradient(135deg, #b03a2e, #98332a);
+  border: none;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px rgba(253, 246, 227, 0.3);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__title {
+  color: #f7f1e3;
+  letter-spacing: 3px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__title::after {
+  height: 2px;
+  background: linear-gradient(90deg, rgba(201, 162, 39, 0.85), rgba(201, 162, 39, 0.25));
+  border-radius: 1px;
+  opacity: 1;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__close,
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__back {
+  color: #f7f1e3;
+  background: transparent;
+  border: 1.5px solid rgba(247, 241, 227, 0.5);
+  border-radius: 4px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__close:hover,
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__back:hover {
+  background: #a63a2e;
+  border-color: #a63a2e;
+  transform: scale(1.08);
+}
+
+/* 内容区：宣纸底 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__body {
+  background: linear-gradient(180deg, #f9f4e8, #f5eedd);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__body::-webkit-scrollbar-thumb {
+  background: rgba(59, 51, 42, 0.35);
+  border: none;
+  border-radius: 2px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__badge {
+  border-radius: 4px;
+  border: 1px solid rgba(166, 58, 46, 0.35);
+  background: rgba(166, 58, 46, 0.08);
+  color: #98332a;
+  transform: none;
+}
+
+/* 区块标题：朱砂竖条 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__section-title {
+  background: rgba(166, 58, 46, 0.06);
+  border: 1px solid rgba(59, 51, 42, 0.18);
+  border-left: 3px solid #a63a2e;
+  border-radius: 3px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__section-title::before {
+  content: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-preset__note,
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__note,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__note,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__note {
+  background: rgba(166, 58, 46, 0.05);
+  border: 1px solid rgba(59, 51, 42, 0.15);
+  border-left: 3px solid #b8862f;
+  border-radius: 3px;
+  transform: none;
+}
+
+/* 输入框 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-input {
+  border-radius: 4px;
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.35);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-input:focus {
+  border-color: #a63a2e;
+  background: #fffdf6;
+  box-shadow: 0 0 0 3px rgba(166, 58, 46, 0.12);
+  transform: none;
+}
+
+/* 主按钮：朱砂印章 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn {
+  border-radius: 4px;
+  border: 1.5px solid #7c2a21;
+  background: linear-gradient(180deg, #b03a2e, #98332a);
+  box-shadow: 0 2px 4px rgba(59, 51, 42, 0.3);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn:hover:not(:disabled) {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 51, 42, 0.32);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn:active:not(:disabled) {
+  filter: brightness(0.95);
+  transform: scale(0.98);
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn:disabled {
+  border-style: solid;
+  opacity: 0.5;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn--ghost {
+  color: #98332a;
+  background: rgba(166, 58, 46, 0.06);
+  border: 1.5px solid rgba(166, 58, 46, 0.45);
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn--ghost:hover:not(:disabled) {
+  background: rgba(166, 58, 46, 0.12);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-confirm__cancel.soullink-btn {
+  color: #3b332a;
+  background: #efe6d2;
+  border-color: rgba(59, 51, 42, 0.5);
+  box-shadow: none;
+}
+
+/* 首页 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__note {
+  background: rgba(166, 58, 46, 0.06);
+  border: 1px solid rgba(59, 51, 42, 0.15);
+  border-left: 3px solid #b8862f;
+  border-radius: 4px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__mini {
+  color: #98332a;
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.3);
+  border-radius: 4px;
+  box-shadow: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__mini:hover {
+  background: rgba(166, 58, 46, 0.08);
+  border-color: #a63a2e;
+  box-shadow: none;
+  transform: scale(1.06);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.55);
+  border-radius: 6px;
+  box-shadow: 0 3px 8px rgba(59, 51, 42, 0.12);
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card:hover {
+  transform: translateY(-2px);
+  border-color: #a63a2e;
+  box-shadow: 0 6px 14px rgba(59, 51, 42, 0.16);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card:active {
+  transform: scale(0.97);
+  box-shadow: 0 2px 6px rgba(59, 51, 42, 0.12);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card-icon {
+  border-radius: 5px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--api .soullink-home__card-icon {
+  color: #98332a;
+  background: rgba(166, 58, 46, 0.08);
+  border: 1px solid rgba(166, 58, 46, 0.45);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--round .soullink-home__card-icon {
+  color: #b8862f;
+  background: rgba(184, 134, 47, 0.1);
+  border: 1px solid rgba(184, 134, 47, 0.45);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--preset .soullink-home__card-icon {
+  color: #c2553f;
+  background: rgba(194, 85, 63, 0.1);
+  border: 1px solid rgba(194, 85, 63, 0.45);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--register .soullink-home__card-icon {
+  color: #5f7f5a;
+  background: rgba(95, 127, 90, 0.1);
+  border: 1px solid rgba(95, 127, 90, 0.45);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--archive .soullink-home__card-icon {
+  color: #4f6d7a;
+  background: rgba(79, 109, 122, 0.1);
+  border: 1px solid rgba(79, 109, 122, 0.45);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--worldbook .soullink-home__card-icon {
+  color: #b8862f;
+  background: rgba(184, 134, 47, 0.1);
+  border: 1px solid rgba(184, 134, 47, 0.45);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__card-status {
+  border-radius: 3px;
+  border: 1px solid rgba(59, 51, 42, 0.25);
+  background: rgba(59, 51, 42, 0.06);
+  color: #6b5b4b;
+  transform: none;
+}
+
+/* 状态胶囊（idle 态；ok/error 等状态色由原规则继续生效） */
+.soullink-panel:where([data-theme='gufeng']) .soullink-api__status,
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__outcome,
+.soullink-panel:where([data-theme='gufeng']) .soullink-preset__status,
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__status,
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__chat,
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__npc-status,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__count,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__chat,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__status,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__status,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__chat,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__status,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__valid {
+  border-radius: 3px;
+  border: 1px solid rgba(59, 51, 42, 0.2);
+  background: rgba(59, 51, 42, 0.06);
+  color: #6b5b4b;
+  transform: none;
+}
+
+/* 角色扮演视图 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__empty,
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__summary-inner,
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__character,
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__inject-text,
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__gate-text {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.25);
+  border-radius: 6px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__character-head {
+  background: rgba(166, 58, 46, 0.05);
+  border-bottom: 1px solid rgba(59, 51, 42, 0.2);
+  border-radius: 6px 6px 0 0;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__stat {
+  background: rgba(59, 51, 42, 0.05);
+  border: none;
+  border-radius: 4px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__character-tag {
+  background: rgba(166, 58, 46, 0.07);
+  border: 1px solid rgba(166, 58, 46, 0.3);
+  border-radius: 3px;
+}
+
+/* 日志系统 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-log__chip,
+.soullink-panel:where([data-theme='gufeng']) .soullink-log__action,
+.soullink-panel:where([data-theme='gufeng']) .soullink-preset__tab {
+  border-radius: 4px;
+  border: 1.5px solid rgba(59, 51, 42, 0.25);
+  background: #fbf7ec;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-log__chip.is-active,
+.soullink-panel:where([data-theme='gufeng']) .soullink-log__action.is-active,
+.soullink-panel:where([data-theme='gufeng']) .soullink-preset__tab.is-active {
+  color: #f7f1e3;
+  background: linear-gradient(180deg, #4b4238, #3b332a);
+  border-color: #3b332a;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-log__console {
+  background: #2b2722;
+  border: 1px solid rgba(59, 51, 42, 0.8);
+  border-radius: 6px;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-log__back {
+  background: linear-gradient(180deg, #b03a2e, #98332a);
+  border: 1.5px solid #7c2a21;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-log__paused {
+  background: rgba(184, 134, 47, 0.14);
+  border: 1px solid rgba(184, 134, 47, 0.4);
+}
+
+/* 注册 / 档案 / 世界书 / 过滤：宣纸条目 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__item,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__card,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__book,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__row {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.25);
+  border-radius: 6px;
+  box-shadow: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__item:hover,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__row:hover {
+  background: rgba(166, 58, 46, 0.04);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__book-head,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__section {
+  border-color: rgba(59, 51, 42, 0.25);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__empty,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__empty,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__empty,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__book-empty,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__empty {
+  background: #fbf7ec;
+  border: 1.5px dashed rgba(59, 51, 42, 0.3);
+  border-radius: 6px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__unregister {
+  background: rgba(166, 58, 46, 0.07);
+  border: 1.5px solid rgba(166, 58, 46, 0.5);
+  border-radius: 4px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__unregister:hover {
+  background: rgba(166, 58, 46, 0.14);
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__analyze {
+  background: linear-gradient(180deg, #b03a2e, #98332a);
+  border: 1.5px solid #7c2a21;
+  box-shadow: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__analyze:hover:not(:disabled) {
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.3);
+  border-radius: 4px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit:hover {
+  background: rgba(166, 58, 46, 0.07);
+  border-color: #a63a2e;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__banner {
+  background: rgba(184, 134, 47, 0.1);
+  border: 1.5px solid rgba(184, 134, 47, 0.5);
+  border-radius: 4px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__search {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.3);
+  border-radius: 4px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__search:focus {
+  border-color: #a63a2e;
+  box-shadow: 0 0 0 3px rgba(166, 58, 46, 0.12);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__entry:hover {
+  background: rgba(166, 58, 46, 0.04);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__entry input[type='checkbox'] {
+  accent-color: #a63a2e;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__badge {
+  border: 1px solid rgba(59, 51, 42, 0.25);
+  background: #fbf7ec;
+}
+
+/* 过滤编辑区 / 开关 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__editor {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.25);
+  border-radius: 6px;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle span {
+  background: rgba(59, 51, 42, 0.3);
+  border: 1px solid rgba(59, 51, 42, 0.3);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle span::after {
+  border: 1px solid rgba(59, 51, 42, 0.35);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle input:checked + span {
+  background: #a63a2e;
+  border-color: #7c2a21;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle input:checked + span::after {
+  background: #f7f1e3;
+}
+
+/* 小图标按钮 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-icon-btn,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__action,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__collapse {
+  border-radius: 4px;
+  border: 1.5px solid rgba(59, 51, 42, 0.3);
+  background: #fbf7ec;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-icon-btn:hover,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__action:hover,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__collapse:hover {
+  background: rgba(166, 58, 46, 0.07);
+  border-color: #a63a2e;
+  transform: none;
+}
+
+/* 底部与主题菜单 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__footer {
+  border-top: 1px solid rgba(59, 51, 42, 0.2);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__link {
+  color: #98332a;
+  text-decoration: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__link:hover {
+  color: #7c2a21;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__version-check,
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme {
+  border: 1.5px solid rgba(59, 51, 42, 0.3);
+  background: #fbf7ec;
+  color: #6b5b4b;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__version-check:hover,
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme:hover {
+  color: #98332a;
+  border-color: #a63a2e;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme-menu {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.3);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(59, 51, 42, 0.2);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme-option:hover {
+  background: rgba(166, 58, 46, 0.07);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme-option.is-active {
+  color: #98332a;
+}
+
+/* 确认弹层 / 分析失败弹层 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-confirm,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive-error {
+  background: rgba(59, 51, 42, 0.45);
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-confirm__card,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive-error__card {
+  background: #f7f1e3;
+  border: 1.5px solid rgba(59, 51, 42, 0.7);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(59, 51, 42, 0.3);
+  filter: none;
+  transform: none;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive-error__hint {
+  background: rgba(166, 58, 46, 0.07);
+  border: 1.5px solid rgba(166, 58, 46, 0.4);
+  border-radius: 4px;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive-error__content {
+  background: #fbf7ec;
+  border: 1.5px solid rgba(59, 51, 42, 0.25);
+  border-radius: 4px;
 }
