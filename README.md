@@ -1,6 +1,6 @@
 # SoulLink
 
-SillyTavern 第三方插件（v1.3.0）。
+SillyTavern 第三方插件（v1.3.1）。
 
 > 灵魂链接 · 角色扮演辅助扩展。
 
