@@ -1835,7 +1835,7 @@ function createPanel() {
         </section>
         <section id="${PRESET_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-preset">
-            <p class="soullink-preset__note">四个子系统的提示词按标签页切换编辑，改完点「💾 保存」；「↺ 恢复默认」可还原出厂内容。</p>
+            <p class="soullink-preset__note">五个子系统的提示词按标签页切换编辑，改完点「💾 保存」；「↺ 恢复默认」可还原出厂内容。</p>
             <div id="${PRESET_TABS_ID}" class="soullink-preset__tabs" role="tablist" aria-label="选择要编辑的提示词">
               ${Object.entries(PRESET_META).map(([key, meta]) => `
                 <button type="button" class="soullink-preset__tab${key === presetActiveKey ? ' is-active' : ''}" role="tab" aria-selected="${key === presetActiveKey ? 'true' : 'false'}" data-prompt-key="${key}" title="${meta.title}">${meta.label}</button>
@@ -3419,6 +3419,16 @@ function getPromptDirty(key) {
   return presetUnsaved[key] !== undefined;
 }
 
+// 浏览器 textarea 会把 \r\n 规范化为 \n，而默认提示词（prompts/*.txt）是 CRLF，
+// 直接 === 比较永远不相等。比较前统一按 \n 归一化，避免「已是默认内容」误判为自定义。
+function normalizePromptText(text) {
+  return String(text).replace(/\r\n/g, '\n');
+}
+
+function isDefaultPromptText(key, text) {
+  return normalizePromptText(text) === normalizePromptText(DEFAULT_PROMPTS[key]);
+}
+
 function updatePresetTabs() {
   document.querySelectorAll('.soullink-preset__tab').forEach((tab) => {
     const key = tab.dataset.promptKey;
@@ -3436,13 +3446,14 @@ function updatePresetStatus(key) {
   const resetBtn = document.getElementById(PRESET_RESET_ID);
   const text = getEditorText();
   const dirty = getPromptDirty(key);
+  const isDefault = isDefaultPromptText(key, text);
   if (status) {
-    status.textContent = dirty ? '未保存的更改' : (text === DEFAULT_PROMPTS[key] ? '默认内容' : '已保存的自定义内容');
-    status.dataset.state = dirty ? 'dirty' : (text === DEFAULT_PROMPTS[key] ? 'default' : 'custom');
+    status.textContent = dirty ? '未保存的更改' : (isDefault ? '默认内容' : '已保存的自定义内容');
+    status.dataset.state = dirty ? 'dirty' : (isDefault ? 'default' : 'custom');
   }
   if (countNode) countNode.textContent = `${text.length} 字 · ${text.split('\n').length} 行`;
   if (saveBtn) saveBtn.disabled = !dirty;
-  if (resetBtn) resetBtn.disabled = !dirty && text === DEFAULT_PROMPTS[key];
+  if (resetBtn) resetBtn.disabled = !dirty && isDefault;
   updatePresetTabs();
 }
 
@@ -3462,7 +3473,7 @@ function refreshHomePresetStatus() {
     const prompts = getPromptSettings(ctx);
     let customized = 0;
     for (const key of Object.keys(DEFAULT_PROMPTS)) {
-      if (typeof prompts[key] === 'string' && prompts[key] !== DEFAULT_PROMPTS[key]) customized += 1;
+      if (typeof prompts[key] === 'string' && !isDefaultPromptText(key, prompts[key])) customized += 1;
     }
     status.textContent = customized > 0 ? `已自定义 ${customized} 份` : '默认配置';
     status.dataset.state = customized > 0 ? 'ok' : 'idle';
@@ -3490,7 +3501,7 @@ async function resetPreset(key) {
   if (!ctx) return;
   const dirty = getPromptDirty(key);
   const text = getEditorText();
-  if (dirty || text !== DEFAULT_PROMPTS[key]) {
+  if (dirty || !isDefaultPromptText(key, text)) {
     const what = dirty ? '未保存的修改' : '已保存的自定义内容';
     const confirmed = await showConfirm(`将「${PRESET_META[key].title}」恢复为默认内容？当前${what}将被默认内容覆盖。`);
     if (!confirmed) return;
@@ -3521,7 +3532,7 @@ function initPresetSection(panel) {
   document.getElementById(PRESET_TEXT_ID)?.addEventListener('input', () => {
     const ctx = getCtx();
     const text = getEditorText();
-    if (text === getPromptSavedText(presetActiveKey, ctx)) delete presetUnsaved[presetActiveKey];
+    if (normalizePromptText(text) === normalizePromptText(getPromptSavedText(presetActiveKey, ctx))) delete presetUnsaved[presetActiveKey];
     else presetUnsaved[presetActiveKey] = text;
     updatePresetStatus(presetActiveKey);
   });

@@ -817,7 +817,7 @@ function createPanel() {
         </section>
         <section id="${PRESET_VIEW_ID}" class="soullink-view" aria-hidden="true">
           <div class="soullink-preset">
-            <p class="soullink-preset__note">四个子系统的提示词按标签页切换编辑，改完点「💾 保存」；「↺ 恢复默认」可还原出厂内容。</p>
+            <p class="soullink-preset__note">五个子系统的提示词按标签页切换编辑，改完点「💾 保存」；「↺ 恢复默认」可还原出厂内容。</p>
             <div id="${PRESET_TABS_ID}" class="soullink-preset__tabs" role="tablist" aria-label="选择要编辑的提示词">
               ${Object.entries(PRESET_META).map(([key, meta]) => `
                 <button type="button" class="soullink-preset__tab${key === presetActiveKey ? ' is-active' : ''}" role="tab" aria-selected="${key === presetActiveKey ? 'true' : 'false'}" data-prompt-key="${key}" title="${meta.title}">${meta.label}</button>
