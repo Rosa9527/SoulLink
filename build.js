@@ -37,6 +37,7 @@ const FILES = [
   'js/constants.js',
   'js/utils.js',
   'js/host.js',
+  'js/send-barrier.js',
   'js/ui-shell.js',
   'js/views-api.js',
   'js/views-filters.js',

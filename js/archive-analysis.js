@@ -871,6 +871,9 @@ async function onAutoArchiveGenerationEnded() {
 // ---------- 剧情前置 NPC 推演：Gate 预筛 + 并发推演 + 注入 ----------
 // 触发时机：用户点击发送（宿主 messageSent 事件；宿主的 emit 会 await 监听器），
 // 本模块的监听器返回 Promise，从而在「推演完成并注入」之前阻塞主模型请求。
+// 并发协调：推演管线注册进跨扩展发送屏障（js/send-barrier.js，与 Kaleidoscope 共用），
+// 与其他扩展的发送前任务并发执行——发送前耗时 = max(各 Gate)，而非串行之和；
+// 屏障不可用时回退为「自己直接阻塞」的原有行为。
 // 流程：Gate（角色扮演预筛：名单 + 最近 4 条消息）→ 入选角色并发推演
 // （角色扮演：该角色档案 + 最近 4 条消息，角色之间不共享上下文）→ 拼接
 // <NPC_Deduction> 块 → setExtensionPrompt(IN_CHAT, depth 0, SYSTEM) 注入到
@@ -1200,56 +1203,70 @@ async function runNpcDeductionPipeline(ctx, settings, names) {
   }
 }
 
-// messageSent 阻塞监听器：返回 Promise，宿主 emit 会 await 它，
-// 从而在推演注入完成前阻止主模型请求；所有分支都必须尽快 resolve。
-async function onNpcDeductionMessageSent(...args) {
-  const ctx = getContextSafe();
-  if (!ctx) return;
+// 角色推演发送前任务（注册进跨扩展发送屏障）：所有守卫都必须在任务内，
+// 因为本轮可能由其他扩展的 messageSent 监听器先行启动。返回 Promise，绝不 reject。
+function runNpcDeductionBarrierTask(ctx, payload) {
   let settings;
   try {
     settings = getSettings(ctx);
   } catch (error) {
     console.warn(`[${MODULE_NAME}] 角色推演：读取设置失败`, error);
-    return;
+    return Promise.resolve();
   }
-  if (!settings.npDeductionEnabled) return;
+  if (!settings.npDeductionEnabled) return Promise.resolve();
   if (!getExtensionPromptApi(ctx)) {
     logApp('warn', '角色推演跳过：宿主不支持提示词注入');
-    return;
+    return Promise.resolve();
   }
   const roster = getRoster(ctx);
   const names = Object.keys(roster || {});
-  if (names.length === 0) return;
-  if (!getApiBase(settings) || !String(settings.model || '').trim()) return;
+  if (names.length === 0) return Promise.resolve();
+  if (!getApiBase(settings) || !String(settings.model || '').trim()) return Promise.resolve();
   const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
   const lastMessage = chat[chat.length - 1];
   // 只处理「用户点击发送」产生的新消息；系统消息 / 非用户末条一律放行。
-  if (!lastMessage || !lastMessage.is_user) return;
+  if (!lastMessage || !lastMessage.is_user) return Promise.resolve();
   // 校验事件载荷与末条消息一致：其他插件自行 emit messageSent 时通常携带自己的
   // 文本（如 QuickReply 发送、自动回复脚本），与末条消息不一致即可判定为误触发；
   // 载荷非字符串（宿主格式差异）时无法校验，按原有逻辑放行。
-  const eventText = typeof args?.[0] === 'string' ? String(args[0]).trim() : '';
+  const eventText = typeof payload === 'string' ? String(payload).trim() : '';
   if (eventText && String(lastMessage.mes || '').trim() !== eventText) {
     logApp('debug', '角色推演跳过：messageSent 载荷与末条消息不一致（疑似其他插件触发）');
-    return;
+    return Promise.resolve();
   }
   const signature = buildNpcDeductionSignature(lastMessage);
   if (npcDeductionState.running) {
     logApp('debug', '角色推演跳过：上一轮仍在运行（本轮内容已覆盖）');
-    return;
+    return Promise.resolve();
   }
   if (npcDeductionState.lastSignature === signature) {
     logApp('debug', '角色推演跳过：同一发送已处理');
-    return;
+    return Promise.resolve();
   }
   npcDeductionState.running = true;
   npcDeductionState.lastSignature = signature;
-  try {
-    await runNpcDeductionPipeline(ctx, settings, names);
-  } finally {
-    npcDeductionState.running = false;
-    npcDeductionState.lastSignature = '';
+  return runNpcDeductionPipeline(ctx, settings, names)
+    .catch((error) => {
+      console.error(`[${MODULE_NAME}] 角色推演任务异常`, error);
+    })
+    .finally(() => {
+      npcDeductionState.running = false;
+      npcDeductionState.lastSignature = '';
+    });
+}
+
+// messageSent 阻塞监听器：返回 Promise，宿主 emit 会 await 它，
+// 从而在推演注入完成前阻止主模型请求；所有分支都必须尽快 resolve。
+// 经跨扩展发送屏障与其他扩展的发送前任务并发执行（屏障不可用时回退为直接阻塞）。
+async function onNpcDeductionMessageSent(...args) {
+  const ctx = getContextSafe();
+  if (!ctx) return;
+  const payload = args?.[0];
+  const barrier = getPreSendBarrier();
+  if (!barrier) {
+    return runNpcDeductionBarrierTask(ctx, payload);
   }
+  return barrier.waitAll(ctx, payload, NPC_DEDUCTION_TIMEOUT_MS);
 }
 
 // 生成结束 / 停止后清空注入：保证 swipes / 重生成 / 后续轮次不会复用本轮的推演块。
@@ -1284,3 +1301,8 @@ function installNpcDeductionMessageSentHook(ctx) {
   globalThis[NPC_MESSAGE_SENT_HANDLER_KEY] = wrapped;
   eventSource.on(eventType, wrapped);
 }
+
+// 注册进跨扩展发送屏障：与其他扩展的发送前任务并发执行，发送前耗时从
+// 「各 Gate 之和」降为「各 Gate 最大值」。注册在模块加载时完成，屏障挂在
+// globalThis，宿主重建事件源后由看门狗重挂监听器时自动复用。
+getPreSendBarrier()?.register('soullink-npc-deduction', runNpcDeductionBarrierTask);
