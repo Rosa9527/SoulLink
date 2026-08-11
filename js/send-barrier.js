@@ -14,6 +14,13 @@
 //   - 轮次签名取 ctx.chat 末条消息（id 优先，否则文本）：宿主串行 emit 下，后一个
 //     扩展的监听器总是晚于本轮完成才被调用，同签名直接复用本轮结果，绝不重复执行
 //     （否则每次发送都会跑两遍 Gate，重复注入）；
+//     [v1.4.1] 仅凭 ID 判重会误伤「删楼后重发」：宿主（TauriTavern）删除消息后
+//     会复用被删消息的 ID，新发送拿到与旧轮相同的 ID 会被误判为旧轮直接放行，
+//     导致发送前预筛整轮被跳过（删两层楼后首条消息不预筛、第二条才恢复）。因此
+//     复用前还要比对末条消息内容：同 ID 不同内容必然是新发送，开启新轮（语义
+//     扩展，Kaleidoscope 已同步）；
+//   - clearSendBarrierRound()：messageDeleted 后清掉旧轮，同 ID 同内容的重发
+//     也不会被误判为旧轮。
 //   - 新签名（新发送产生新消息 → 新 id）开启新轮并替换旧轮；
 //   - 任务内部自行处理开关 / 载荷校验 / 超时 / 失败降级；任何失败都不会让
 //     waitAll reject（allSettled + 整轮硬截止兜底）；
@@ -30,6 +37,22 @@ function computeSendBarrierSignature(ctx) {
   const id = last.id;
   if (id !== undefined && id !== null && String(id).trim() !== '') return 'id:' + String(id);
   return 'text:' + String(last.mes || '');
+}
+
+// 末条消息内容快照：与签名一起构成轮次复用判据。宿主删除消息后复用被删消息的
+// ID（楼层序号式 ID），只比签名会把「删楼后重发」误判为旧轮；内容不同即新发送。
+function getSendBarrierLastText(ctx) {
+  const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  const last = chat[chat.length - 1];
+  return last ? String(last.mes || '') : '';
+}
+
+// 清空当前轮次：messageDeleted 后旧轮签名可能被新消息复用（TauriTavern 删除消息
+// 复用被删 ID），不清理会把删除后的首次发送误判为「同一发送已处理」直接放行。
+// 对屏障本身只是属性重置，不改协议方法签名。
+function clearSendBarrierRound() {
+  const barrier = getPreSendBarrier();
+  if (barrier) barrier.round = null;
 }
 
 function getPreSendBarrier() {
@@ -49,9 +72,11 @@ function getPreSendBarrier() {
       waitAll(ctx, payload, timeoutMs) {
         const signature = computeSendBarrierSignature(ctx);
         if (signature === '') return Promise.resolve();
-        // 同签名复用本轮（在途或已完成）：宿主逐个 await 监听器，后到的监听器
-        // 必然晚于本轮结束，复用结果即可，绝不能重跑一轮造成重复注入。
-        if (this.round && this.round.signature === signature) {
+        const lastText = getSendBarrierLastText(ctx);
+        // 同签名且末条内容一致才复用本轮（在途或已完成）：宿主逐个 await 监听器，
+        // 后到的监听器必然晚于本轮结束，复用结果即可，绝不能重跑一轮造成重复注入。
+        // 内容不一致说明「删楼后重发」（宿主复用被删消息 ID），必须开启新轮。
+        if (this.round && this.round.signature === signature && this.round.lastText === lastText) {
           return this.round.promise;
         }
         const names = Array.from(this.tasks.keys());
@@ -80,7 +105,7 @@ function getPreSendBarrier() {
         if (limit > 0) {
           deadlineTimer = setTimeout(done, limit);
         }
-        this.round = { signature, promise };
+        this.round = { signature, lastText, promise };
         return promise;
       },
     };
