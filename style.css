@@ -262,8 +262,10 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 13px;
-  font-weight: 600;
+  font-family: "Spencerian Script", "Vladimir Script", "Segoe Script", "Snell Roundhand", "Brush Script MT", cursive;
+  font-size: 21px;
+  font-weight: 500;
+  font-synthesis: none;
   color: var(--sl-ink);
   pointer-events: none;
   white-space: nowrap;
@@ -2501,7 +2503,7 @@ textarea.soullink-input {
 
 .soullink-panel:where([data-theme='paper']) .soullink-panel__titlebar-title {
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   transform: translateX(-50%);
 }
 
@@ -3001,7 +3003,7 @@ textarea.soullink-input {
 .soullink-panel:where([data-theme='gufeng']) .soullink-panel__titlebar-title {
   color: #f5e6c4;
   font-weight: 700;
-  letter-spacing: 4px;
+  letter-spacing: 0.5px;
 }
 
 /* 窗控：印章按钮（浅描边，悬停朱砂红） */
