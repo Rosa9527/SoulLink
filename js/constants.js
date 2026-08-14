@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.4.1';
+const MODULE_VERSION = '1.6.0';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
@@ -7,12 +7,13 @@ const VERSION_CHECK_ID = 'soullink-version-check';
 const THEME_ID = 'soullink-theme';
 const THEME_MENU_ID = 'soullink-theme-menu';
 // 主题注册表：id 对应 style.css 中 [data-theme='...'] 的变量覆盖；name 显示在按钮与菜单里。
-// 默认主题为「古风典雅」，后续新增主题只需在此追加条目并在 style.css 补变量覆盖。
+// 默认主题为「古风典雅」（首位即默认，新用户默认使用），后续新增主题只需在此追加条目并在 style.css 补变量覆盖。
 const DEFAULT_THEME = 'gufeng';
 const THEMES = Object.freeze([
+  { id: 'gufeng', name: '古风典雅' },
+  { id: 'macos', name: 'macOS 风格' },
   { id: 'paper', name: '手绘涂鸦' },
   { id: 'qq', name: '聊天气泡' },
-  { id: 'gufeng', name: '古风典雅' },
 ]);
 // 版本检查结果缓存时长：1 小时内不重复联网，点击提示可强制重新检查。
 const VERSION_CHECK_CACHE_MS = 60 * 60 * 1000;
@@ -24,14 +25,17 @@ const MENU_API_ID = 'soullink-menu-api';
 const MENU_ICON_CLASS = 'fa-solid fa-link';
 const LOG_ICON_CLASS = 'fa-solid fa-scroll';
 const PRESET_ICON_CLASS = 'fa-solid fa-file-lines';
+const HOME_ICON_CLASS = 'fa-solid fa-house';
+const FILTER_ICON_CLASS = 'fa-solid fa-filter';
 const PANEL_TITLE_ID = 'soullink-panel-title';
 const PANEL_BACK_ID = 'soullink-panel-back';
 const HOME_VIEW_ID = 'soullink-home-view';
 const API_VIEW_ID = 'soullink-api-view';
 const LOG_VIEW_ID = 'soullink-log-view';
-const HOME_API_CARD_ID = 'soullink-home-api-card';
-const HOME_LOG_ICON_ID = 'soullink-home-log-icon';
+const FILTER_VIEW_ID = 'soullink-filter-view';
+// 视图切换：概览页功能行与其余视图共用 data-view 驱动。
 const HOME_API_STATUS_ID = 'soullink-home-api-status';
+const HOME_FILTER_STATUS_ID = 'soullink-home-filter-status';
 const API_STATUS_ID = 'soullink-api-status';
 const API_URL_ID = 'soullink-api-url';
 const API_KEY_ID = 'soullink-api-key';
@@ -79,7 +83,6 @@ const LOG_BACK_ID = 'soullink-log-back-to-latest';
 const LOG_STATUS_ID = 'soullink-log-status';
 const LOG_PAUSED_ID = 'soullink-log-paused-badge';
 const PRESET_VIEW_ID = 'soullink-preset-view';
-const HOME_PRESET_CARD_ID = 'soullink-home-preset-card';
 const HOME_PRESET_STATUS_ID = 'soullink-home-preset-status';
 const PRESET_TABS_ID = 'soullink-preset-tabs';
 const PRESET_TEXT_ID = 'soullink-preset-text';
@@ -91,15 +94,12 @@ const REGISTER_VIEW_ID = 'soullink-register-view';
 const ARCHIVE_VIEW_ID = 'soullink-archive-view';
 const REGISTER_ICON_CLASS = 'fa-solid fa-user-plus';
 const ARCHIVE_ICON_CLASS = 'fa-solid fa-folder-open';
-const HOME_REGISTER_CARD_ID = 'soullink-home-register-card';
-const HOME_ARCHIVE_CARD_ID = 'soullink-home-archive-card';
 const HOME_REGISTER_STATUS_ID = 'soullink-home-register-status';
 const HOME_ARCHIVE_STATUS_ID = 'soullink-home-archive-status';
 const REGISTER_INPUT_ID = 'soullink-register-input';
 const REGISTER_ADD_ID = 'soullink-register-add';
 const REGISTER_LIST_ID = 'soullink-register-list';
 const REGISTER_STATUS_ID = 'soullink-register-status';
-const REGISTER_CHAT_ID = 'soullink-register-chat';
 const ARCHIVE_ANALYZE_ALL_ID = 'soullink-archive-analyze-all';
 const ARCHIVE_REFINE_ALL_ID = 'soullink-archive-refine-all';
 const AUTO_ARCHIVE_TOGGLE_ID = 'soullink-archive-auto-toggle';
@@ -107,7 +107,6 @@ const ARCHIVE_LIST_ID = 'soullink-archive-list';
 const ARCHIVE_STATUS_ID = 'soullink-archive-status';
 const WORLDBOOK_VIEW_ID = 'soullink-worldbook-view';
 const WORLDBOOK_ICON_CLASS = 'fa-solid fa-book-bookmark';
-const HOME_WORLDBOOK_CARD_ID = 'soullink-home-worldbook-card';
 const HOME_WORLDBOOK_STATUS_ID = 'soullink-home-worldbook-status';
 const WORLDBOOK_STATUS_ID = 'soullink-worldbook-status';
 const WORLDBOOK_CHAT_ID = 'soullink-worldbook-chat';

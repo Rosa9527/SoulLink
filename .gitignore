@@ -15,3 +15,6 @@ _v2block.txt
 
 # Windows 快捷方式（本机专用，不上传）
 *.lnk
+
+# ZCode 本地工具配置，不上传
+.zcode/

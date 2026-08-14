@@ -1,84 +1,147 @@
 /* =========================================================
-   SoulLink · 手绘涂鸦风格（paper & ink）
-   纸感底 + 墨水描边 + 马克笔点缀；不规则圆角配合 SVG
-   位移滤镜（#soullink-wobble）模拟手绘抖动。
+   SoulLink · 前端样式（v1.6.0 全新窗口化布局）
+   ---------------------------------------------------------
+   架构：悬浮球（启动器）→ 独立应用窗口（对话框）。
+   窗口 = 标题栏（左上返回 + 居中应用名 + 右上关闭）+ 工具栏（页面大标题）
+        + 主区（内容面板，概览页即主页 hub）+ 状态栏（版本/主题/GitHub）。
+   四个主题（古风典雅默认 / macos / 手绘涂鸦 / 聊天气泡）共用同一套
+   结构类名，主题块用 :where([data-theme='xxx']) 覆盖 CSS 变量与少量
+   质感规则换肤；结构/布局全部由基础块承担，主题只负责「皮肤」。
+   带 [data-state] 的状态色由基础块统一定义（idle/ok/warn/error/busy）。
    ========================================================= */
 
+/* ---------- 设计令牌：基础变量（中性浅色外观，主题块的底色） ---------- */
 .soullink-sphere,
 .soullink-panel {
-  --sl-ink: #3d2b1f;
-  --sl-ink-soft: rgba(61, 43, 31, 0.45);
-  --sl-paper: #fdf6e3;
-  --sl-paper-deep: #f5ead0;
-  --sl-violet: #7c5cbf;
-  --sl-pink: #e56b6f;
-  --sl-yellow: #f2c14e;
-  --sl-green: #7ba05b;
-  --sl-blue: #5f9dc9;
-  --sl-font: "Comic Sans MS", "Segoe Print", "KaiTi", "楷体", "STKaiti", "FangSong", "仿宋", cursive;
+  --sl-ink: #1d1d1f;
+  --sl-ink-soft: rgba(0, 0, 0, 0.42);
+  --sl-ink-faint: rgba(0, 0, 0, 0.26);
+  --sl-text-secondary: #6e6e73;
+  --sl-text-tertiary: #86868b;
+  --sl-paper: #ffffff;
+  --sl-paper-deep: #f5f5f7;
+  --sl-surface: #ffffff;
+  --sl-surface-muted: #f5f5f7;
+  --sl-window-bg: rgba(255, 255, 255, 0.86);
+  --sl-titlebar-bg: rgba(246, 246, 248, 0.88);
+  --sl-toolbar-bg: transparent;
+  --sl-sidebar-bg: #f2f2f5;
+  --sl-sidebar-item-hover: rgba(0, 0, 0, 0.05);
+  --sl-sidebar-item-active: #ffffff;
+  --sl-content-bg: #f5f5f7;
+  --sl-border: rgba(0, 0, 0, 0.1);
+  --sl-border-strong: rgba(0, 0, 0, 0.2);
+  --sl-violet: #007aff;
+  --sl-pink: #ff3b30;
+  --sl-yellow: #ff9f0a;
+  --sl-green: #34c759;
+  --sl-blue: #007aff;
+  --sl-accent: #007aff;
+  --sl-accent-hover: #0051d5;
+  --sl-accent-tint: rgba(0, 122, 255, 0.12);
+  --sl-btn-bg: rgba(120, 120, 128, 0.12);
+  --sl-btn-bg-hover: rgba(120, 120, 128, 0.2);
+  --sl-btn-bg-active: rgba(120, 120, 128, 0.26);
+  --sl-switch-off: rgba(120, 120, 128, 0.32);
+  --sl-switch-on: #34c759;
+  --sl-segmented-bg: rgba(120, 120, 128, 0.12);
+  --sl-segmented-active: #ffffff;
+  --sl-console-bg: #fbfbfd;
+  --sl-pre-bg: #fbfbfd;
+  --sl-note-bg: rgba(120, 120, 128, 0.08);
+  --sl-danger-bg: rgba(255, 59, 48, 0.12);
+  --sl-warn-bg: rgba(255, 149, 0, 0.14);
+  --sl-ok-bg: rgba(52, 199, 89, 0.14);
+  --sl-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --sl-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --sl-shadow-window: 0 4px 16px rgba(0, 0, 0, 0.14), 0 24px 64px rgba(0, 0, 0, 0.28);
+  --sl-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --sl-mono: "SF Mono", SFMono-Regular, ui-monospace, Consolas, "Cascadia Code", "Courier New", monospace;
+  --sl-radius-window: 12px;
+  --sl-radius-card: 10px;
+  --sl-radius-control: 7px;
 }
 
-/* 主题机制：面板与悬浮球通过 data-theme 属性切换主题；默认变量即「手绘涂鸦」，
-   后续新增主题只需在 THEMES 注册并在下方追加 [data-theme='xxx'] 变量覆盖。 */
+/* 状态色（data-state）：ok / warn / error / busy / idle */
+.soullink-panel [data-state='ok'] { color: var(--sl-green); }
+.soullink-panel [data-state='warn'] { color: var(--sl-yellow); }
+.soullink-panel [data-state='error'] { color: var(--sl-pink); }
+.soullink-panel [data-state='busy'] { color: var(--sl-blue); }
+.soullink-panel [data-state='idle'] { color: var(--sl-text-secondary); }
 
-/* ---------- 悬浮球：纸片小贴纸 ---------- */
+/* hidden 属性必须压过组件自身的 display 规则（如侧边栏项、角色扮演区块） */
+.soullink-panel [hidden] {
+  display: none !important;
+}
+
+/* ---------- 通用动画 ---------- */
+@keyframes soullink-grow-anim {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes soullink-shrink-anim {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0); opacity: 0; }
+}
+@keyframes soullink-window-in {
+  0% { transform: scale(0.96) translateY(6px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes soullink-window-out {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.96) translateY(6px); opacity: 0; }
+}
+
+/* =========================================================
+   悬浮球：玻璃 Dock 球
+   ========================================================= */
 .soullink-sphere {
   position: fixed;
   z-index: 10000;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   user-select: none;
   touch-action: none;
-  color: #a78fd8;
-  font-size: 15px;
+  color: var(--sl-accent);
+  font-size: 16px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 46%),
-    rgba(253, 246, 227, 0.88);
-  border: 2px solid rgba(61, 43, 31, 0.5);
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.45) 42%, rgba(255, 255, 255, 0.12) 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(206, 206, 212, 0.72));
+  border: 0.5px solid rgba(255, 255, 255, 0.85);
   box-shadow:
-    3px 4px 0 rgba(61, 43, 31, 0.18),
-    0 8px 14px rgba(61, 43, 31, 0.16);
-  filter: url(#soullink-wobble-strong);
-  transform: rotate(-4deg);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-
-.soullink-sphere::before {
-  content: '';
-  position: absolute;
-  inset: 5px;
-  border: 2px dashed var(--sl-violet);
-  border-radius: 50%;
-  opacity: 0.4;
-  pointer-events: none;
-  animation: soullink-spin 16s linear infinite;
+    0 0 0 0.5px rgba(0, 0, 0, 0.16),
+    0 4px 14px rgba(0, 0, 0, 0.2),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .soullink-sphere__icon {
-  transform: rotate(5deg);
   pointer-events: none;
 }
 
 .soullink-sphere:hover {
-  animation: soullink-wiggle 0.45s ease-in-out;
+  transform: translateY(-2px) scale(1.06);
   box-shadow:
-    4px 5px 0 rgba(61, 43, 31, 0.2),
-    0 10px 16px rgba(61, 43, 31, 0.18);
+    0 0 0 0.5px rgba(0, 0, 0, 0.14),
+    0 8px 22px rgba(0, 122, 255, 0.32),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.08);
 }
 
 .soullink-sphere:active {
-  transform: rotate(-2deg) scale(0.94);
+  transform: scale(0.94);
 }
 
 .soullink-sphere.is-dragging {
-  cursor: grabbing;
   transition: none;
-  transform: rotate(0deg) scale(1.06);
+  transform: scale(1.08);
 }
 
 .soullink-sphere.is-appearing {
@@ -89,27 +152,9 @@
   animation: soullink-shrink-anim 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-@keyframes soullink-grow-anim {
-  0% { transform: scale(0); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes soullink-shrink-anim {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0); opacity: 0; }
-}
-
-@keyframes soullink-spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes soullink-wiggle {
-  0%, 100% { transform: rotate(-4deg) scale(1); }
-  40% { transform: rotate(3deg) scale(1.07); }
-  70% { transform: rotate(-2deg) scale(1.04); }
-}
-
-/* ---------- 面板：牛皮纸便签卡 ---------- */
+/* =========================================================
+   窗口：对话框容器（应用窗口）
+   ========================================================= */
 .soullink-panel {
   position: fixed;
   inset: 0;
@@ -125,8 +170,10 @@
 .soullink-panel__dialog {
   position: fixed;
   z-index: 1;
-  width: 340px;
+  width: min(700px, calc(100vw - 24px));
+  height: min(600px, calc(100vh - 48px));
   max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 48px);
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -135,23 +182,1771 @@
   font-family: var(--sl-font);
   font-size: 14px;
   color: var(--sl-ink);
-  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
-  background: var(--sl-paper);
-  border: 3px solid var(--sl-ink);
-  box-shadow:
-    8px 9px 0 rgba(61, 43, 31, 0.16),
-    0 18px 34px rgba(61, 43, 31, 0.28);
-  filter: url(#soullink-wobble);
-  transform: rotate(-0.6deg);
+  border-radius: var(--sl-radius-window);
+  background: var(--sl-window-bg);
+  border: 0.5px solid var(--sl-border-strong);
+  box-shadow: var(--sl-shadow-window);
+  overflow: hidden;
+}
+
+/* 宽模式：日志/预设/档案/世界书/角色扮演视图经红绿灯「缩放」展开 */
+.soullink-panel__dialog.is-log-mode,
+.soullink-panel__dialog.is-preset-mode,
+.soullink-panel__dialog.is-archive-mode,
+.soullink-panel__dialog.is-worldbook-mode,
+.soullink-panel__dialog.is-round-mode {
+  width: min(900px, calc(100vw - 24px));
+  height: min(680px, calc(100vh - 48px));
+}
+
+.soullink-panel.is-open .soullink-panel__dialog {
+  animation: soullink-window-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .soullink-panel__dialog.is-dragging {
   cursor: grabbing;
-  transform: rotate(0deg);
+  user-select: none;
 }
 
+/* ---------- 标题栏：红绿灯 + 应用名 + 搜索 ---------- */
+.soullink-panel__titlebar {
+  position: relative;
+  flex: none;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  cursor: move;
+  user-select: none;
+  background: var(--sl-titlebar-bg);
+  border-bottom: 0.5px solid var(--sl-border);
+}
 
-/* ---------- 确认弹层：宿主 confirm 被 ACL 拦截，自绘 ---------- */
+/* 标题栏窗控：左上返回（概览页自身隐藏）+ 右上关闭（主题负责换肤） */
+.soullink-panel__back,
+.soullink-panel__close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sl-text-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+
+.soullink-panel__back:hover,
+.soullink-panel__close:hover {
+  background: var(--sl-btn-bg);
+  color: var(--sl-ink);
+}
+
+.soullink-panel__back:active,
+.soullink-panel__close:active {
+  transform: scale(0.92);
+}
+
+.soullink-panel__close {
+  margin-left: auto;
+}
+
+.soullink-panel__titlebar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sl-ink);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ---------- 工具栏：页面大标题 ---------- */
+.soullink-panel__toolbar {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: var(--sl-toolbar-bg);
+  border-bottom: 0.5px solid var(--sl-border);
+}
+
+.soullink-panel__title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sl-ink);
+  letter-spacing: -0.2px;
+}
+
+/* ---------- 主区：侧边栏 + 内容面板 ---------- */
+.soullink-panel__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+/* 内容面板 */
+.soullink-panel__body {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 20px 22px;
+  overflow-y: auto;
+  background: var(--sl-content-bg);
+}
+
+.soullink-view {
+  display: none;
+}
+
+.soullink-view.is-active {
+  display: block;
+  animation: soullink-view-in 0.18s ease;
+}
+
+@keyframes soullink-view-in {
+  0% { opacity: 0; transform: translateY(3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 状态栏（底部） ---------- */
+.soullink-panel__footer {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--sl-titlebar-bg);
+  border-top: 0.5px solid var(--sl-border);
+  font-size: 12px;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-panel__version {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.soullink-panel__version-check {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--sl-btn-bg);
+  color: var(--sl-text-secondary);
+  font-family: var(--sl-font);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.soullink-panel__version-check:hover {
+  background: var(--sl-btn-bg-hover);
+}
+
+.soullink-panel__version-check[data-state='new'] {
+  color: #fff;
+  background: var(--sl-accent);
+}
+
+.soullink-panel__version-check[data-state='error'] {
+  color: var(--sl-pink);
+  background: var(--sl-danger-bg);
+}
+
+.soullink-panel__footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.soullink-panel__theme-wrap {
+  position: relative;
+}
+
+.soullink-panel__theme {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--sl-btn-bg);
+  color: var(--sl-text-secondary);
+  font-family: var(--sl-font);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.soullink-panel__theme:hover {
+  background: var(--sl-btn-bg-hover);
+}
+
+.soullink-panel__link {
+  color: var(--sl-accent);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.soullink-panel__link:hover {
+  text-decoration: underline;
+}
+
+/* 主题菜单（popover） */
+.soullink-panel__theme-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  min-width: 150px;
+  padding: 5px;
+  background: var(--sl-paper);
+  border: 0.5px solid var(--sl-border);
+  border-radius: 9px;
+  box-shadow: var(--sl-shadow-window);
+}
+
+.soullink-panel__theme-option {
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sl-ink);
+  font-family: var(--sl-font);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.soullink-panel__theme-option:hover {
+  background: var(--sl-btn-bg);
+}
+
+.soullink-panel__theme-option.is-active {
+  color: var(--sl-accent);
+  font-weight: 600;
+}
+
+.soullink-panel__theme-option.is-active::after {
+  content: '✓';
+  float: right;
+  font-weight: 700;
+}
+
+/* =========================================================
+   分组卡片（内容面板里的设置组）
+   ========================================================= */
+.soullink-panel__section {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  background: var(--sl-paper);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+  box-shadow: var(--sl-shadow-sm);
+}
+
+.soullink-panel__section:last-child {
+  margin-bottom: 0;
+}
+
+.soullink-panel__section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.soullink-panel__section-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--sl-ink);
+}
+
+/* =========================================================
+   通用控件
+   ========================================================= */
+
+/* 按钮：中性 bezel 风格 */
+.soullink-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 13px;
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-control);
+  background: var(--sl-btn-bg);
+  color: var(--sl-ink);
+  font-family: var(--sl-font);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.06s ease;
+}
+
+.soullink-btn:hover:not(:disabled) {
+  background: var(--sl-btn-bg-hover);
+}
+
+.soullink-btn:active:not(:disabled) {
+  background: var(--sl-btn-bg-active);
+  transform: scale(0.98);
+}
+
+.soullink-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.soullink-btn:focus-visible,
+.soullink-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--sl-accent-tint);
+}
+
+.soullink-btn--primary {
+  background: var(--sl-accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.soullink-btn--primary:hover:not(:disabled) {
+  background: var(--sl-accent-hover);
+}
+
+.soullink-btn--primary:active:not(:disabled) {
+  background: var(--sl-accent-hover);
+}
+
+.soullink-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--sl-accent);
+}
+
+.soullink-btn--ghost:hover:not(:disabled) {
+  background: var(--sl-accent-tint);
+}
+
+/* 图标按钮 */
+.soullink-icon-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-control);
+  background: var(--sl-btn-bg);
+  color: var(--sl-ink);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.soullink-icon-btn:hover {
+  background: var(--sl-btn-bg-hover);
+}
+
+/* 输入框 / 下拉框 / 文本域 */
+.soullink-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-control);
+  background: var(--sl-paper);
+  color: var(--sl-ink);
+  font-family: var(--sl-font);
+  font-size: 13px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.soullink-input:focus {
+  outline: none;
+  border-color: var(--sl-accent);
+  box-shadow: 0 0 0 3px var(--sl-accent-tint);
+}
+
+.soullink-input::placeholder {
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-input:disabled {
+  opacity: 0.5;
+}
+
+select.soullink-input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2386868b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 L6 7.5 L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px;
+  cursor: pointer;
+}
+
+textarea.soullink-input {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* macOS 开关 */
+.soullink-switch {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--sl-switch-off);
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.soullink-switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--sl-accent-tint);
+}
+
+.soullink-switch.is-on {
+  background: var(--sl-switch-on);
+}
+
+.soullink-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.24);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.soullink-switch.is-on .soullink-switch__thumb {
+  transform: translateX(16px);
+}
+
+/* 开关行（说明文字 + 开关/控件） */
+.soullink-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.soullink-switch-row__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.soullink-switch-row__label {
+  font-size: 13px;
+  color: var(--sl-ink);
+}
+
+.soullink-switch-row__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-switch-row__control {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.soullink-switch-row__state {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* =========================================================
+   概览页（首页）
+   ========================================================= */
+.soullink-home__hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 6px 0 18px;
+}
+
+.soullink-home__logo {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: #fff;
+  background: linear-gradient(180deg, #0a84ff, #0071e3);
+  border-radius: 13px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    var(--sl-shadow-md);
+}
+
+.soullink-home__hello {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--sl-ink);
+}
+
+.soullink-home__sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-home__rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.soullink-home__row {
+  width: 100%;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sl-ink);
+  font-family: var(--sl-font);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.soullink-home__row:hover {
+  background: var(--sl-btn-bg);
+}
+
+.soullink-home__row-icon {
+  flex: none;
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-home__row-label {
+  flex: none;
+  min-width: 70px;
+  font-weight: 500;
+}
+
+.soullink-home__row-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 角色扮演行徽章：上一轮推演状态点（有记录时显示，颜色随 data-state） */
+.soullink-home__row-badge {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--sl-pink);
+}
+
+.soullink-home__row-badge[data-state='ok'] { background: var(--sl-green); }
+.soullink-home__row-badge[data-state='warn'] { background: var(--sl-yellow); }
+.soullink-home__row-badge[data-state='error'] { background: var(--sl-pink); }
+.soullink-home__row-badge[data-state='idle'] { background: var(--sl-text-tertiary); }
+
+.soullink-home__row-chevron {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--sl-text-tertiary);
+  border-right: 1.5px solid var(--sl-text-tertiary);
+  transform: rotate(45deg);
+  opacity: 0.7;
+}
+
+/* =========================================================
+   API 连接视图
+   ========================================================= */
+.soullink-api__status {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--sl-btn-bg);
+}
+
+.soullink-api__status[data-state='ok'] { background: var(--sl-ok-bg); }
+.soullink-api__status[data-state='error'] { background: var(--sl-danger-bg); }
+.soullink-api__status[data-state='busy'] { background: var(--sl-accent-tint); }
+
+.soullink-api__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.soullink-api__field:last-child {
+  margin-bottom: 0;
+}
+
+.soullink-api__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-api__key-row {
+  display: flex;
+  gap: 8px;
+}
+
+.soullink-api__key-row .soullink-input {
+  flex: 1;
+}
+
+.soullink-api__actions {
+  margin: 14px 0 12px;
+}
+
+.soullink-api__hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-api__concurrency-input {
+  flex: none;
+  width: 56px;
+  text-align: center;
+}
+
+/* =========================================================
+   正则过滤视图
+   ========================================================= */
+.soullink-filter__status {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--sl-btn-bg);
+}
+
+.soullink-filter__status[data-state='ok'] { background: var(--sl-ok-bg); }
+.soullink-filter__status[data-state='error'] { background: var(--sl-danger-bg); }
+
+.soullink-filter__hint,
+.soullink-filter__editor-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-filter__toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.soullink-filter__editor {
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--sl-surface-muted);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+}
+
+.soullink-filter__editor-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.soullink-filter__editor-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.soullink-filter__valid {
+  font-size: 12px;
+}
+
+.soullink-filter__valid[data-state='ok'] { color: var(--sl-green); }
+.soullink-filter__valid[data-state='error'] { color: var(--sl-pink); }
+
+.soullink-filter__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.soullink-filter__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-filter__editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.soullink-filter__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.soullink-filter__empty {
+  margin: 6px 0;
+  font-size: 12.5px;
+  color: var(--sl-text-secondary);
+  text-align: center;
+}
+
+.soullink-filter__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 7px;
+  transition: background 0.12s ease;
+}
+
+.soullink-filter__row:hover {
+  background: var(--sl-btn-bg);
+}
+
+/* 过滤启用开关：checkbox 渲染为 macOS 开关 */
+.soullink-filter__toggle {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 22px;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.soullink-filter__toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.soullink-filter__toggle span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--sl-switch-off);
+  transition: background 0.18s ease;
+}
+
+.soullink-filter__toggle span::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.24);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.soullink-filter__toggle input:checked + span {
+  background: var(--sl-switch-on);
+}
+
+.soullink-filter__toggle input:checked + span::after {
+  transform: translateX(14px);
+}
+
+.soullink-filter__toggle input:focus-visible + span {
+  box-shadow: 0 0 0 3px var(--sl-accent-tint);
+}
+
+.soullink-filter__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.soullink-filter__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sl-ink);
+}
+
+.soullink-filter__pattern {
+  font-family: var(--sl-mono);
+  font-size: 11.5px;
+  color: var(--sl-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soullink-filter__actions {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.soullink-filter__action {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.soullink-filter__action:hover {
+  background: var(--sl-btn-bg);
+}
+
+.soullink-filter__action--danger:hover {
+  background: var(--sl-danger-bg);
+}
+
+/* =========================================================
+   日志系统视图
+   ========================================================= */
+.soullink-log__chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 10px;
+  background: var(--sl-segmented-bg);
+  border-radius: 9px;
+}
+
+.soullink-log__chip {
+  height: 26px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sl-text-secondary);
+  font-family: var(--sl-font);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.soullink-log__chip:hover {
+  color: var(--sl-ink);
+}
+
+.soullink-log__chip.is-active {
+  background: var(--sl-segmented-active);
+  box-shadow: var(--sl-shadow-sm);
+  color: var(--sl-ink);
+  font-weight: 600;
+}
+
+.soullink-log__chip-count {
+  font-size: 10.5px;
+  opacity: 0.7;
+  font-weight: 600;
+}
+
+.soullink-log__tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.soullink-log__search {
+  flex: 1;
+}
+
+.soullink-log__source,
+.soullink-log__max {
+  flex: none;
+  width: 128px;
+}
+
+.soullink-log__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.soullink-log__action {
+  height: 26px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0.5px solid var(--sl-border);
+  border-radius: 7px;
+  background: var(--sl-btn-bg);
+  color: var(--sl-text-secondary);
+  font-family: var(--sl-font);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.soullink-log__action:hover {
+  background: var(--sl-btn-bg-hover);
+  color: var(--sl-ink);
+}
+
+.soullink-log__action.is-active {
+  color: var(--sl-accent);
+  border-color: var(--sl-accent);
+  background: var(--sl-accent-tint);
+  font-weight: 600;
+}
+
+.soullink-log__console {
+  position: relative;
+  height: min(320px, calc(100vh - 460px));
+  min-height: 120px;
+  overflow: hidden;
+  background: var(--sl-console-bg);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+}
+
+.soullink-log__list {
+  height: 100%;
+  overflow-y: auto;
+  padding: 6px 0;
+  font-family: var(--sl-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.soullink-log__row {
+  display: grid;
+  grid-template-columns: 74px 44px 84px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.soullink-log__row:hover {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.soullink-log__row.is-expanded {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.soullink-log__row--error { border-left-color: var(--sl-pink); }
+.soullink-log__row--warn { border-left-color: var(--sl-yellow); }
+.soullink-log__row--info { border-left-color: var(--sl-blue); }
+.soullink-log__row--debug { border-left-color: var(--sl-text-tertiary); }
+
+.soullink-log__time {
+  color: var(--sl-text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.soullink-log__level {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-align: center;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.soullink-log__row--error .soullink-log__level { color: var(--sl-pink); background: var(--sl-danger-bg); }
+.soullink-log__row--warn .soullink-log__level { color: var(--sl-yellow); background: var(--sl-warn-bg); }
+.soullink-log__row--info .soullink-log__level { color: var(--sl-blue); background: var(--sl-accent-tint); }
+.soullink-log__row--debug .soullink-log__level { color: var(--sl-text-tertiary); background: var(--sl-btn-bg); }
+
+.soullink-log__source {
+  color: var(--sl-text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.soullink-log__text {
+  min-width: 0;
+  word-break: break-word;
+  color: var(--sl-ink);
+}
+
+.soullink-log__row--error .soullink-log__text { color: var(--sl-pink); }
+.soullink-log__row--warn .soullink-log__text { color: #b25e00; }
+
+.soullink-log__detail {
+  grid-column: 2 / -1;
+  display: none;
+  margin: 2px 0 6px;
+  padding: 6px 9px;
+  font-family: var(--sl-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--sl-text-secondary);
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 6px;
+}
+
+.soullink-log__row.is-expanded .soullink-log__detail {
+  display: block;
+}
+
+.soullink-log__repeat {
+  grid-column: 2 / -1;
+  font-size: 10.5px;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-log__note,
+.soullink-log__empty {
+  padding: 20px 12px;
+  text-align: center;
+  color: var(--sl-text-tertiary);
+  font-size: 12px;
+  font-family: var(--sl-font);
+}
+
+.soullink-log__back {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0.5px solid var(--sl-border);
+  border-radius: 999px;
+  background: var(--sl-paper);
+  color: var(--sl-accent);
+  font-family: var(--sl-font);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--sl-shadow-md);
+}
+
+.soullink-log__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-log__paused {
+  color: var(--sl-yellow);
+  font-weight: 600;
+}
+
+/* =========================================================
+   预设视图
+   ========================================================= */
+.soullink-preset__tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 12px;
+  background: var(--sl-segmented-bg);
+  border-radius: 9px;
+}
+
+.soullink-preset__tab {
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sl-text-secondary);
+  font-family: var(--sl-font);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.soullink-preset__tab:hover {
+  color: var(--sl-ink);
+}
+
+.soullink-preset__tab.is-active {
+  background: var(--sl-segmented-active);
+  box-shadow: var(--sl-shadow-sm);
+  color: var(--sl-ink);
+  font-weight: 600;
+}
+
+.soullink-preset__note,
+.soullink-register__note,
+.soullink-archive__note,
+.soullink-worldbook__note,
+.soullink-round__note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-preset__status {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--sl-btn-bg);
+}
+
+.soullink-preset__status[data-state='custom'] { background: var(--sl-warn-bg); }
+.soullink-preset__status[data-state='saved'] { background: var(--sl-ok-bg); }
+
+.soullink-preset__count {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-preset__text {
+  min-height: 240px;
+  font-family: var(--sl-mono);
+  font-size: 12.5px;
+}
+
+.soullink-preset__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* =========================================================
+   角色注册视图
+   ========================================================= */
+.soullink-register__add {
+  display: flex;
+  gap: 8px;
+}
+
+.soullink-register__input {
+  flex: 1;
+}
+
+.soullink-register__status {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--sl-btn-bg);
+}
+
+.soullink-register__status[data-state='ok'] { background: var(--sl-ok-bg); }
+
+.soullink-register__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.soullink-register__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 7px;
+  transition: background 0.12s ease;
+}
+
+.soullink-register__item:hover {
+  background: var(--sl-btn-bg);
+}
+
+.soullink-register__item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sl-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soullink-register__unregister {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border: 0.5px solid var(--sl-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sl-text-secondary);
+  font-family: var(--sl-font);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.soullink-register__unregister:hover {
+  background: var(--sl-danger-bg);
+  color: var(--sl-pink);
+}
+
+.soullink-register__empty {
+  margin: 6px 0;
+  font-size: 12.5px;
+  color: var(--sl-text-secondary);
+  text-align: center;
+}
+
+/* =========================================================
+   档案系统视图
+   ========================================================= */
+.soullink-archive__count {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--sl-btn-bg);
+}
+
+.soullink-archive__count[data-state='ok'] { background: var(--sl-ok-bg); }
+
+.soullink-archive__toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.soullink-archive__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.soullink-archive__card {
+  background: var(--sl-surface-muted);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+  overflow: hidden;
+}
+
+.soullink-archive__card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.soullink-archive__card-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sl-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soullink-archive__status {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.soullink-archive__status[data-state='ok'] { color: var(--sl-green); }
+.soullink-archive__status[data-state='busy'] { color: var(--sl-blue); }
+.soullink-archive__status[data-state='error'] { color: var(--sl-pink); }
+
+.soullink-archive__analyze,
+.soullink-archive__refine,
+.soullink-archive__edit,
+.soullink-archive__collapse {
+  flex: none;
+  height: 24px;
+  padding: 0 9px;
+  border: 0.5px solid var(--sl-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sl-text-secondary);
+  font-family: var(--sl-font);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.soullink-archive__analyze:hover,
+.soullink-archive__refine:hover,
+.soullink-archive__edit:hover {
+  background: var(--sl-btn-bg);
+  color: var(--sl-ink);
+}
+
+.soullink-archive__collapse {
+  width: 24px;
+  padding: 0;
+}
+
+.soullink-archive__card-actions {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.soullink-archive__body {
+  padding: 4px 12px 12px;
+}
+
+/* 单个档案收起（v1.6.0 重构时丢失，已恢复） */
+.soullink-archive__card.is-collapsed .soullink-archive__status,
+.soullink-archive__card.is-collapsed .soullink-archive__card-actions,
+.soullink-archive__card.is-collapsed .soullink-archive__body {
+  display: none;
+}
+
+.soullink-archive__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px 14px;
+  margin-bottom: 10px;
+}
+
+.soullink-archive__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.soullink-archive__field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-archive__field-value {
+  font-size: 12.5px;
+  color: var(--sl-ink);
+  word-break: break-word;
+}
+
+.soullink-archive__section {
+  margin-bottom: 8px;
+}
+
+.soullink-archive__section-title {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sl-text-secondary);
+}
+
+.soullink-archive__section-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-archive__section-items {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.soullink-archive__section-item {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--sl-ink);
+}
+
+.soullink-archive__meta {
+  font-size: 11.5px;
+  color: var(--sl-text-tertiary);
+  margin-bottom: 8px;
+}
+
+.soullink-archive__field--edit {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.soullink-archive__field--edit .soullink-input {
+  flex: 1;
+}
+
+.soullink-archive__empty {
+  margin: 6px 0;
+  font-size: 12.5px;
+  color: var(--sl-text-secondary);
+  text-align: center;
+}
+
+/* =========================================================
+   世界书视图
+   ========================================================= */
+.soullink-worldbook__status,
+.soullink-worldbook__chat {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-worldbook__chat {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soullink-worldbook__toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.soullink-worldbook__banner {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: var(--sl-warn-bg);
+  color: #b25e00;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.soullink-worldbook__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.soullink-worldbook__book-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--sl-surface-muted);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+  cursor: pointer;
+}
+
+.soullink-worldbook__book-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sl-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soullink-worldbook__book-count {
+  font-size: 11.5px;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-worldbook__collapse {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--sl-text-tertiary);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.soullink-worldbook__book-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.soullink-worldbook__entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.soullink-worldbook__entry:hover {
+  background: var(--sl-btn-bg);
+}
+
+.soullink-worldbook__entry input[type='checkbox'] {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--sl-accent);
+  cursor: pointer;
+}
+
+.soullink-worldbook__entry-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.soullink-worldbook__entry-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--sl-ink);
+  word-break: break-word;
+}
+
+.soullink-worldbook__entry-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.soullink-worldbook__badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--sl-btn-bg);
+  color: var(--sl-text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.soullink-worldbook__book-empty,
+.soullink-worldbook__empty {
+  margin: 6px 0;
+  font-size: 12.5px;
+  color: var(--sl-text-secondary);
+  text-align: center;
+}
+
+/* =========================================================
+   角色扮演视图
+   ========================================================= */
+.soullink-round__summary-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--sl-paper);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+  box-shadow: var(--sl-shadow-sm);
+  margin-bottom: 12px;
+}
+
+.soullink-round__outcome {
+  align-self: flex-start;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--sl-btn-bg);
+}
+
+.soullink-round__outcome[data-state='ok'] { background: var(--sl-ok-bg); }
+.soullink-round__outcome[data-state='warn'] { background: var(--sl-warn-bg); }
+.soullink-round__outcome[data-state='error'] { background: var(--sl-danger-bg); }
+
+.soullink-round__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.soullink-round__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.soullink-round__stat-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--sl-text-tertiary);
+}
+
+.soullink-round__stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sl-ink);
+}
+
+.soullink-round__names {
+  font-size: 12px;
+  color: var(--sl-text-secondary);
+  word-break: break-word;
+}
+
+.soullink-round__empty {
+  margin: 10px 0;
+  font-size: 12.5px;
+  color: var(--sl-text-secondary);
+  text-align: center;
+}
+
+.soullink-round__gate-head,
+.soullink-round__characters-head,
+.soullink-round__inject-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 2px 8px;
+}
+
+.soullink-round__gate-head .soullink-panel__section-title,
+.soullink-round__characters-head .soullink-panel__section-title,
+.soullink-round__inject-head .soullink-panel__section-title {
+  flex: 1;
+}
+
+.soullink-round__gate-text,
+.soullink-round__inject-text {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--sl-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--sl-ink);
+  background: var(--sl-pre-bg);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+}
+
+.soullink-round__characters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.soullink-round__character {
+  background: var(--sl-paper);
+  border: 0.5px solid var(--sl-border);
+  border-radius: var(--sl-radius-card);
+  box-shadow: var(--sl-shadow-sm);
+  overflow: hidden;
+}
+
+.soullink-round__character-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--sl-surface-muted);
+  border-bottom: 0.5px solid var(--sl-border);
+}
+
+.soullink-round__character-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sl-ink);
+}
+
+.soullink-round__character-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--sl-accent-tint);
+  color: var(--sl-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.soullink-round__character-body {
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--sl-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* =========================================================
+   确认弹层（宿主 confirm 被 ACL 拦截，自绘）
+   ========================================================= */
 .soullink-confirm {
   position: fixed;
   inset: 0;
@@ -160,7 +1955,9 @@
   align-items: center;
   justify-content: center;
   pointer-events: auto;
-  background: rgba(61, 43, 31, 0.35);
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 .soullink-confirm.is-open {
@@ -175,13 +1972,9 @@
   font-size: 14px;
   color: var(--sl-ink);
   background: var(--sl-paper);
-  border: 3px solid var(--sl-ink);
-  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
-  box-shadow:
-    8px 9px 0 rgba(61, 43, 31, 0.16),
-    0 18px 34px rgba(61, 43, 31, 0.28);
-  filter: url(#soullink-wobble);
-  transform: rotate(-0.6deg);
+  border: 0.5px solid var(--sl-border-strong);
+  border-radius: var(--sl-radius-window);
+  box-shadow: var(--sl-shadow-window);
 }
 
 .soullink-confirm__message {
@@ -199,2503 +1992,9 @@
   flex: 1;
 }
 
-.soullink-confirm__cancel.soullink-btn {
-  color: var(--sl-ink);
-  background: var(--sl-paper-deep);
-}
-
-
-.soullink-panel__header {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  cursor: move;
-  user-select: none;
-  background: var(--sl-paper-deep);
-  border-bottom: 2px dashed rgba(61, 43, 31, 0.35);
-  border-radius: 255px 15px 0 0 / 15px 255px 0 0;
-}
-
-.soullink-panel__header::after {
-  content: '✿';
-  position: absolute;
-  top: 5px;
-  right: 46px;
-  font-size: 13px;
-  color: var(--sl-pink);
-  transform: rotate(16deg);
-  pointer-events: none;
-}
-
-.soullink-panel__logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  color: var(--sl-violet);
-  font-size: 15px;
-  background: rgba(124, 92, 191, 0.15);
-  border: 2px dashed var(--sl-violet);
-  border-radius: 44% 56% 52% 48% / 56% 44% 56% 44%;
-  transform: rotate(-6deg);
-}
-
-.soullink-panel__title {
-  flex: 1;
-  position: relative;
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: 1px;
-  transform: rotate(-1deg);
-}
-
-.soullink-panel__title::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -4px;
-  height: 6px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='8' viewBox='0 0 120 8'%3E%3Cpath d='M2 5 C 12 1, 22 1, 32 5 S 52 9, 62 5 S 82 1, 92 5 S 112 9, 118 4' fill='none' stroke='%23e56b6f' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / 100% 100%;
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.soullink-panel__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 2.5px solid var(--sl-ink);
-  border-radius: 47% 53% 50% 50% / 53% 47% 53% 47%;
-  background: transparent;
-  color: var(--sl-ink);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transform: rotate(4deg);
-  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
-}
-
-.soullink-panel__close:hover {
-  background: var(--sl-pink);
-  color: #fff;
-  transform: rotate(-8deg) scale(1.15);
-}
-
-.soullink-panel__back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 2.5px solid var(--sl-ink);
-  border-radius: 50% 47% 53% 50% / 47% 53% 50% 53%;
-  background: transparent;
-  color: var(--sl-ink);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transform: rotate(-4deg);
-  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
-}
-
-.soullink-panel__back:hover {
-  background: var(--sl-yellow);
-  transform: rotate(6deg) scale(1.12);
-}
-
-.soullink-panel__body {
-  padding: 18px 16px;
-  max-height: calc(100vh - 96px);
-  overflow-y: auto;
-  background: repeating-linear-gradient(transparent 0 25px, rgba(61, 43, 31, 0.08) 25px 26px);
-}
-
-.soullink-panel__body::-webkit-scrollbar {
-  width: 10px;
-}
-
-.soullink-panel__body::-webkit-scrollbar-thumb {
-  background: rgba(61, 43, 31, 0.35);
-  border: 2px solid var(--sl-paper);
-  border-radius: 255px 10px 255px 10px / 10px 255px 10px 255px;
-}
-
-.soullink-panel__placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 0 6px;
-  text-align: center;
-}
-
-.soullink-panel__badge {
-  display: inline-flex;
-  padding: 4px 14px;
-  border-radius: 255px 12px 235px 12px / 12px 235px 12px 255px;
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: var(--sl-violet);
-  background: rgba(124, 92, 191, 0.14);
-  border: 2px dashed var(--sl-violet);
-  transform: rotate(-1.5deg);
-}
-
-.soullink-panel__hint {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.7;
-  opacity: 0.85;
-}
-
-/* ---------- API 连接 ---------- */
-.soullink-panel__section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.soullink-panel__section-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.soullink-panel__section-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 11px;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 1px;
-  background: rgba(242, 193, 78, 0.42);
-  border: 2px dashed rgba(61, 43, 31, 0.5);
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-  transform: rotate(-1deg);
-}
-
-.soullink-panel__section-title::before {
-  content: '✦';
-  color: var(--sl-violet);
-  font-size: 12px;
-}
-
-.soullink-api__status {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  padding: 3px 10px;
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: normal;
-  word-break: break-all;
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.6);
-  border: 2px solid rgba(95, 157, 201, 0.85);
-  transform: rotate(0.8deg);
-}
-
-.soullink-api__status::before {
-  content: '✎';
-  margin-right: 4px;
-  font-size: 12px;
-}
-
-.soullink-api__status[data-state='busy'] {
-  color: #8a6d1f;
-  border-color: rgba(242, 193, 78, 0.95);
-  background: rgba(242, 193, 78, 0.22);
-}
-
-.soullink-api__status[data-state='busy']::after {
-  content: '···';
-  animation: soullink-blink 1s steps(1) infinite;
-}
-
-.soullink-api__status[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.95);
-  background: rgba(123, 160, 91, 0.2);
-}
-
-.soullink-api__status[data-state='error'] {
-  color: #b03a48;
-  border-color: rgba(229, 107, 111, 0.95);
-  background: rgba(229, 107, 111, 0.18);
-}
-
-@keyframes soullink-blink {
-  50% { opacity: 0.35; }
-}
-
-.soullink-api__field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.soullink-api__label {
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  opacity: 0.85;
-}
-
-.soullink-input {
-  width: 100%;
-  min-width: 0;
-  padding: 7px 11px;
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-  font-size: 13.5px;
-  font-family: var(--sl-font);
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.75);
-  border: 2px solid var(--sl-ink-soft);
-  outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.soullink-input:focus {
-  border-color: var(--sl-violet);
-  background: #fff;
-  box-shadow: 3px 3px 0 rgba(124, 92, 191, 0.35);
-  transform: rotate(-0.4deg);
-}
-
-.soullink-input::placeholder {
-  font-style: italic;
-  opacity: 0.5;
-}
-
-select.soullink-input {
-  cursor: pointer;
-}
-
-.soullink-api__key-row {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-}
-
-.soullink-api__key-row .soullink-input {
-  flex: 1;
-}
-
-.soullink-api__concurrency-row {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.soullink-api__concurrency-toggle {
-  flex: 1;
-  padding: 7px 10px;
-  font-size: 12.5px;
-}
-
-.soullink-api__concurrency-toggle.is-active {
-  border-color: var(--sl-green);
-  color: #4f7a33;
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-api__concurrency-input {
-  flex: none;
-  width: 84px;
-  text-align: center;
-}
-
-.soullink-api__concurrency-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.soullink-icon-btn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  padding: 0;
-  border-radius: 255px 10px 255px 10px / 10px 255px 10px 255px;
-  font-size: 14px;
-  cursor: pointer;
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.75);
-  border: 2px solid var(--sl-ink-soft);
-  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-}
-
-.soullink-icon-btn:hover {
-  background: rgba(124, 92, 191, 0.16);
-  border-color: var(--sl-violet);
-  transform: rotate(-8deg) scale(1.06);
-}
-
-.soullink-api__actions {
-  display: flex;
-}
-
-.soullink-btn {
-  flex: 1;
-  padding: 9px 12px;
-  border-radius: 255px 14px 235px 14px / 14px 235px 14px 255px;
-  font-size: 14px;
-  font-weight: 700;
-  font-family: var(--sl-font);
-  letter-spacing: 1px;
-  cursor: pointer;
-  color: #fff;
-  background:
-    radial-gradient(circle at 26% 24%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 42%),
-    var(--sl-violet);
-  border: 3px solid var(--sl-ink);
-  box-shadow: 4px 4px 0 var(--sl-ink);
-  transform: rotate(-0.7deg);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
-}
-
-.soullink-btn:hover:not(:disabled) {
-  filter: brightness(1.05);
-  transform: rotate(0.7deg) translate(-1px, -1px);
-  box-shadow: 5px 6px 0 var(--sl-ink);
-}
-
-.soullink-btn:active:not(:disabled) {
-  filter: brightness(0.95);
-  transform: rotate(0.5deg) translate(3px, 3px);
-  box-shadow: 1px 1px 0 var(--sl-ink);
-}
-
-.soullink-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-  border-style: dashed;
-  box-shadow: none;
-  transform: none;
-}
-
-.soullink-api__hint {
-  margin: 0;
-  padding-left: 8px;
-  font-size: 11.5px;
-  line-height: 1.7;
-  opacity: 0.6;
-  border-left: 3px solid var(--sl-yellow);
-}
-
-/* ---------- 总前端：首页启动器 ---------- */
-.soullink-view {
-  display: none;
-}
-
-.soullink-view.is-active {
-  display: block;
-  animation: soullink-view-in 0.22s ease-out;
-}
-
-@keyframes soullink-view-in {
-  from { opacity: 0; transform: translateY(6px) rotate(0.6deg); }
-  to { opacity: 1; transform: translateY(0) rotate(0deg); }
-}
-
-.soullink-home__note {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  background: rgba(124, 92, 191, 0.12);
-  border: 2px dashed rgba(124, 92, 191, 0.55);
-  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
-  transform: rotate(-0.8deg);
-}
-
-.soullink-home__note-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.soullink-home__hello {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.soullink-home__sub {
-  margin: 0;
-  font-size: 12px;
-  opacity: 0.65;
-}
-
-.soullink-home__mini {
-  position: relative;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  cursor: pointer;
-  color: var(--sl-violet);
-  font-size: 15px;
-  background: rgba(255, 255, 255, 0.75);
-  border: 2.5px dashed var(--sl-violet);
-  border-radius: 46% 54% 50% 50% / 54% 46% 54% 46%;
-  transform: rotate(4deg);
-  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.soullink-home__mini:hover {
-  background: rgba(124, 92, 191, 0.16);
-  transform: rotate(-4deg) scale(1.08);
-  box-shadow: 3px 3px 0 rgba(124, 92, 191, 0.3);
-}
-
-.soullink-home__mini:active {
-  transform: rotate(0deg) scale(0.94);
-}
-
-.soullink-home__card-badge {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--sl-paper);
-  background: #9aa0a6;
-  pointer-events: none;
-}
-
-.soullink-home__card-badge[data-state='ok'] {
-  background: #4f9a45;
-}
-
-.soullink-home__card-badge[data-state='warn'] {
-  background: #e0a33b;
-}
-
-.soullink-home__card-badge[data-state='error'] {
-  background: #d64550;
-}
-
-.soullink-home__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.soullink-home__card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 18px 10px 14px;
-  cursor: pointer;
-  font-family: var(--sl-font);
-  color: var(--sl-ink);
-  background: var(--sl-paper);
-  border: 3px solid var(--sl-ink);
-  box-shadow: 4px 5px 0 rgba(61, 43, 31, 0.22);
-  filter: url(#soullink-wobble);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-.soullink-home__card--api {
-  border-radius: 235px 15px 255px 15px / 15px 255px 15px 235px;
-  transform: rotate(-1.6deg);
-}
-
-.soullink-home__card--round {
-  border-radius: 15px 235px 15px 255px / 255px 15px 235px 15px;
-  transform: rotate(1.4deg);
-}
-
-.soullink-home__card--preset {
-  border-radius: 15px 255px 15px 235px / 235px 15px 255px 15px;
-  transform: rotate(-0.9deg);
-}
-
-.soullink-home__card:hover {
-  transform: rotate(0deg) translateY(-3px) scale(1.03);
-  box-shadow: 6px 8px 0 rgba(61, 43, 31, 0.26);
-}
-
-.soullink-home__card:active {
-  transform: translateY(1px) scale(0.97);
-  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.24);
-}
-
-.soullink-home__card-icon {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  font-size: 22px;
-  border-radius: 46% 54% 50% 50% / 54% 46% 54% 46%;
-  transform: rotate(-5deg);
-}
-
-.soullink-home__card--api .soullink-home__card-icon {
-  color: var(--sl-violet);
-  background: rgba(124, 92, 191, 0.16);
-  border: 2.5px dashed var(--sl-violet);
-}
-
-.soullink-home__card--round .soullink-home__card-icon {
-  color: var(--sl-yellow);
-  background: rgba(242, 193, 78, 0.16);
-  border: 2.5px dashed var(--sl-yellow);
-  transform: rotate(4deg);
-}
-
-.soullink-home__card--preset .soullink-home__card-icon {
-  color: var(--sl-pink);
-  background: rgba(229, 107, 111, 0.16);
-  border: 2.5px dashed var(--sl-pink);
-  transform: rotate(-2deg);
-}
-
-.soullink-home__card-title {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.soullink-home__card-status {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  padding: 2px 8px;
-  font-size: 11px;
-  line-height: 1.5;
-  text-align: center;
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  border: 2px solid rgba(95, 157, 201, 0.7);
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.7);
-  transform: rotate(0.6deg);
-}
-
-.soullink-home__card-status[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-home__card-status[data-state='error'] {
-  color: #b03a48;
-  border-color: rgba(229, 107, 111, 0.95);
-  background: rgba(229, 107, 111, 0.2);
-}
-
-/* ---------- 上一轮角色扮演 ---------- */
-.soullink-round {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.soullink-round [hidden] {
-  display: none !important;
-}
-
-.soullink-round__note {
-  margin: 0;
-  padding-left: 8px;
-  font-size: 11.5px;
-  line-height: 1.7;
-  opacity: 0.6;
-  border-left: 3px solid var(--sl-yellow);
-}
-
-.soullink-round__empty {
-  padding: 18px 14px;
-  text-align: center;
-  font-size: 12.5px;
-  line-height: 1.7;
-  opacity: 0.75;
-  background: rgba(255, 255, 255, 0.5);
-  border: 2px dashed rgba(61, 43, 31, 0.35);
-  border-radius: 255px 14px 235px 14px / 14px 235px 14px 255px;
-}
-
-.soullink-round__summary-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 2px solid rgba(61, 43, 31, 0.3);
-  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
-}
-
-.soullink-round__outcome {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  border: 2px solid rgba(95, 157, 201, 0.7);
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.75);
-  transform: rotate(-0.8deg);
-}
-
-.soullink-round__outcome[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-round__outcome[data-state='warn'] {
-  color: #9a6b1d;
-  border-color: rgba(242, 193, 78, 0.95);
-  background: rgba(242, 193, 78, 0.22);
-}
-
-.soullink-round__outcome[data-state='error'] {
-  color: #b03a48;
-  border-color: rgba(229, 107, 111, 0.95);
-  background: rgba(229, 107, 111, 0.2);
-}
-
-.soullink-round__stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.soullink-round__stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
-  background: rgba(124, 92, 191, 0.08);
-  border: 2px dashed rgba(124, 92, 191, 0.4);
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-}
-
-.soullink-round__stat-label {
-  font-size: 10.5px;
-  opacity: 0.6;
-}
-
-.soullink-round__stat-value {
-  font-size: 13px;
-  font-weight: 700;
-  word-break: break-all;
-}
-
-.soullink-round__names {
-  font-size: 12px;
-  line-height: 1.6;
-  opacity: 0.85;
-  word-break: break-all;
-}
-
-.soullink-round__characters-head,
-.soullink-round__gate-head,
-.soullink-round__inject-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.soullink-round__characters {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.soullink-round__character {
-  background: rgba(255, 255, 255, 0.6);
-  border: 2px solid rgba(61, 43, 31, 0.3);
-  border-radius: 15px 235px 15px 255px / 255px 15px 235px 15px;
-}
-
-.soullink-round__character-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 12px;
-  background: rgba(124, 92, 191, 0.1);
-  border-bottom: 2px dashed rgba(124, 92, 191, 0.35);
-  border-radius: 15px 235px 0 0 / 255px 15px 0 0;
-}
-
-.soullink-round__character-name {
-  font-size: 13.5px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.soullink-round__character-tag {
-  padding: 2px 8px;
-  font-size: 10.5px;
-  color: var(--sl-violet);
-  background: rgba(124, 92, 191, 0.14);
-  border: 2px dashed rgba(124, 92, 191, 0.55);
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-}
-
-.soullink-round__character-body {
-  padding: 10px 12px;
-  font-size: 12.5px;
-  line-height: 1.75;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.soullink-round__inject-text,
-.soullink-round__gate-text {
-  margin: 0;
-  padding: 10px 12px;
-  max-height: 260px;
-  overflow: auto;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 11.5px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.72);
-  border: 2px solid rgba(61, 43, 31, 0.3);
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-}
-
-.soullink-round__copy {
-  flex: none;
-  width: auto;
-  padding: 5px 12px;
-  font-size: 12px;
-}
-
-/* ---------- 日志系统 ---------- */
-.soullink-panel__dialog.is-log-mode {
-  width: 540px;
-}
-
-.soullink-panel__dialog.is-preset-mode {
-  width: 600px;
-}
-
-.soullink-log {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.soullink-log__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.soullink-log__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  font-family: var(--sl-font);
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--sl-ink);
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.7);
-  border: 2px solid var(--sl-ink-soft);
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  transform: rotate(-0.6deg);
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.soullink-log__chip:hover {
-  transform: rotate(0.6deg) scale(1.04);
-}
-
-.soullink-log__chip.is-active {
-  color: #fff;
-  background: var(--sl-violet);
-  border-color: var(--sl-ink);
-}
-
-.soullink-log__chip-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 17px;
-  padding: 0 4px;
-  font-size: 10px;
-  line-height: 1.5;
-  border-radius: 255px;
-  background: rgba(61, 43, 31, 0.12);
-}
-
-.soullink-log__chip.is-active .soullink-log__chip-count {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.soullink-log__tools {
-  display: flex;
-  gap: 8px;
-}
-
-.soullink-log__search {
-  flex: 1;
-}
-
-.soullink-log__max,
-.soullink-log__source {
-  flex: none;
-  width: auto;
-  padding: 7px 8px;
-  font-size: 12px;
-}
-
-.soullink-log__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.soullink-log__action {
-  flex: 1;
-  min-width: 72px;
-  padding: 6px 8px;
-  font-family: var(--sl-font);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--sl-ink);
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.72);
-  border: 2px solid var(--sl-ink-soft);
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.soullink-log__action:hover {
-  background: rgba(124, 92, 191, 0.14);
-  border-color: var(--sl-violet);
-  transform: rotate(-1deg);
-}
-
-.soullink-log__action.is-active {
-  color: #fff;
-  background: var(--sl-violet);
-  border-color: var(--sl-ink);
-}
-
-.soullink-log__console {
-  position: relative;
-  background: #261c11;
-  border: 3px solid var(--sl-ink);
-  border-radius: 14px 255px 14px 255px / 255px 14px 255px 14px;
-  box-shadow: inset 4px 5px 0 rgba(0, 0, 0, 0.28);
-  filter: url(#soullink-wobble);
-  transform: rotate(0.4deg);
-}
-
-.soullink-log__list {
-  height: 300px;
-  max-height: 52vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 8px 6px;
-  font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
-  font-size: 11.5px;
-  line-height: 1.55;
-  scroll-behavior: auto;
-}
-
-.soullink-log__list::-webkit-scrollbar {
-  width: 9px;
-}
-
-.soullink-log__list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 255px;
-}
-
-.soullink-log__row {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-  padding: 1px 5px;
-  border-radius: 4px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.soullink-log__row:hover {
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.soullink-log__row.is-expanded {
-  white-space: normal;
-}
-
-.soullink-log__time {
-  flex: none;
-  color: #9c8f78;
-}
-
-.soullink-log__level {
-  flex: none;
-  width: 38px;
-  text-align: center;
-  padding: 0 2px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  border-radius: 3px;
-}
-
-.soullink-log__row--debug .soullink-log__level {
-  color: #8ec7e8;
-  background: rgba(143, 199, 232, 0.14);
-}
-
-.soullink-log__row--info .soullink-log__level {
-  color: #a8d68f;
-  background: rgba(168, 214, 143, 0.13);
-}
-
-.soullink-log__row--warn .soullink-log__level {
-  color: #f0c15c;
-  background: rgba(240, 193, 92, 0.16);
-}
-
-.soullink-log__row--error .soullink-log__level {
-  color: #ff9aa0;
-  background: rgba(255, 120, 128, 0.18);
-}
-
-.soullink-log__source {
-  flex: none;
-  max-width: 76px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #c9a6e8;
-  opacity: 0.9;
-}
-
-.soullink-log__text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #d9cdb6;
-}
-
-.soullink-log__row--error .soullink-log__text {
-  color: #ffd7d9;
-}
-
-.soullink-log__row.is-expanded .soullink-log__text {
-  white-space: pre-wrap;
-  word-break: break-all;
-  overflow: visible;
-}
-
-.soullink-log__detail {
-  display: none;
-  flex-basis: 100%;
-  margin: 2px 0 4px;
-  padding: 6px 8px;
-  font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: #c9d8b8;
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 3px solid rgba(124, 92, 191, 0.6);
-  border-radius: 4px;
-}
-
-.soullink-log__row.is-expanded .soullink-log__detail {
-  display: block;
-}
-
-.soullink-log__repeat {
-  flex: none;
-  align-self: center;
-  padding: 0 5px;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.6;
-  color: #f0c15c;
-  background: rgba(240, 193, 92, 0.16);
-  border: 1px solid rgba(240, 193, 92, 0.5);
-  border-radius: 255px;
-}
-
-.soullink-log__note,
-.soullink-log__empty {
-  padding: 4px 6px 8px;
-  font-size: 10.5px;
-  font-style: italic;
-  color: #9c8f78;
-}
-
-.soullink-log__back {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  padding: 5px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  color: #fff;
-  background: var(--sl-violet);
-  border: 2px solid var(--sl-ink);
-  border-radius: 255px 8px 235px 8px / 8px 235px 8px 255px;
-  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.35);
-}
-
-.soullink-log__back:hover {
-  transform: translateY(-1px);
-}
-
-.soullink-log__status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11.5px;
-  opacity: 0.75;
-}
-
-.soullink-log__paused {
-  padding: 2px 8px;
-  color: #8a6d1f;
-  border-radius: 255px;
-  background: rgba(242, 193, 78, 0.25);
-  border: 1.5px dashed rgba(61, 43, 31, 0.4);
-}
-
-/* ---------- 预设系统 ---------- */
-.soullink-preset {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.soullink-preset__note {
-  margin: 0;
-  padding: 8px 12px;
-  font-size: 12px;
-  line-height: 1.7;
-  background: rgba(242, 193, 78, 0.18);
-  border: 2px dashed rgba(61, 43, 31, 0.45);
-  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
-  transform: rotate(-0.5deg);
-}
-
-.soullink-preset__tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.soullink-preset__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 11px;
-  font-family: var(--sl-font);
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--sl-ink);
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.72);
-  border: 2px solid var(--sl-ink-soft);
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  transform: rotate(-0.6deg);
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.soullink-preset__tab:hover {
-  transform: rotate(0.6deg) scale(1.04);
-}
-
-.soullink-preset__tab.is-active {
-  color: #fff;
-  background: var(--sl-pink);
-  border-color: var(--sl-ink);
-}
-
-.soullink-preset__tab.is-dirty::after {
-  content: '●';
-  font-size: 9px;
-  color: var(--sl-pink);
-}
-
-.soullink-preset__tab.is-active.is-dirty::after {
-  color: #fff;
-}
-
-.soullink-preset__editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.soullink-preset__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11.5px;
-  opacity: 0.8;
-}
-
-.soullink-preset__status {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border-radius: 255px;
-  border: 2px solid rgba(95, 157, 201, 0.7);
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.7);
-  transform: rotate(-0.5deg);
-}
-
-.soullink-preset__status[data-state='dirty'] {
-  color: #8a6d1f;
-  border-color: rgba(242, 193, 78, 0.95);
-  background: rgba(242, 193, 78, 0.22);
-}
-
-.soullink-preset__status[data-state='custom'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-preset__count {
-  font-size: 11px;
-  opacity: 0.7;
-}
-
-.soullink-preset__text {
-  min-height: 300px;
-  max-height: 56vh;
-  resize: vertical;
-  font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
-  font-size: 12.5px;
-  line-height: 1.75;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.soullink-preset__actions {
-  display: flex;
-  gap: 8px;
-}
-
-.soullink-preset__actions .soullink-btn {
-  flex: 1;
-}
-
-.soullink-btn--ghost {
-  color: var(--sl-ink);
-  background:
-    radial-gradient(circle at 26% 24%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 42%),
-    rgba(255, 255, 255, 0.8);
-  border: 3px solid var(--sl-ink);
-  box-shadow: 4px 4px 0 var(--sl-ink);
-}
-
-.soullink-btn--ghost:hover:not(:disabled) {
-  background: rgba(242, 193, 78, 0.25);
-}
-
-/* ---------- 面板底部 ---------- */
-.soullink-panel__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px 12px;
-  font-size: 12px;
-  opacity: 0.8;
-  border-top: 2px dashed rgba(61, 43, 31, 0.3);
-}
-
-.soullink-panel__link {
-  color: var(--sl-violet);
-  text-decoration: underline wavy var(--sl-pink) 1.5px;
-  text-underline-offset: 3px;
-  transition: color 0.2s ease;
-}
-
-.soullink-panel__link:hover {
-  color: var(--sl-pink);
-}
-
-.soullink-panel__version {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.soullink-panel__version-check {
-  font-family: var(--sl-font);
-  font-size: 11px;
-  line-height: 1;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1.5px dashed var(--sl-ink-soft);
-  background: transparent;
-  color: var(--sl-ink-soft);
-  cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.soullink-panel__version-check:hover {
-  color: var(--sl-ink);
-  border-color: var(--sl-ink);
-}
-
-.soullink-panel__version-check[data-state='checking'] {
-  color: var(--sl-blue);
-  border-color: var(--sl-blue);
-  cursor: default;
-}
-
-.soullink-panel__version-check[data-state='ok'] {
-  color: var(--sl-green);
-  border-color: var(--sl-green);
-}
-
-.soullink-panel__version-check[data-state='new'] {
-  color: var(--sl-pink);
-  border-color: var(--sl-pink);
-  background: rgba(229, 107, 111, 0.12);
-}
-
-.soullink-panel__version-check[data-state='error'] {
-  color: var(--sl-pink);
-  border-color: var(--sl-pink);
-}
-
-/* ---------- 主题切换 ---------- */
-.soullink-panel__footer-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.soullink-panel__theme-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
-.soullink-panel__theme {
-  font-family: var(--sl-font);
-  font-size: 11px;
-  line-height: 1;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1.5px dashed var(--sl-ink-soft);
-  background: transparent;
-  color: var(--sl-ink-soft);
-  cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.soullink-panel__theme:hover {
-  color: var(--sl-ink);
-  border-color: var(--sl-ink);
-}
-
-.soullink-panel__theme-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 6px);
-  z-index: 30;
-  min-width: 130px;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--sl-paper);
-  border: 2px solid var(--sl-ink);
-  border-radius: 10px 18px 10px 18px / 18px 10px 18px 10px;
-  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.25);
-}
-
-.soullink-panel__theme-option {
-  font-family: var(--sl-font);
-  font-size: 12px;
-  line-height: 1.2;
-  text-align: left;
-  padding: 5px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--sl-ink);
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
-}
-
-.soullink-panel__theme-option:hover {
-  background: rgba(242, 193, 78, 0.3);
-}
-
-.soullink-panel__theme-option.is-active {
-  color: var(--sl-violet);
-  font-weight: bold;
-}
-/* ---------- 角色注册（注册系统） ---------- */
-.soullink-home__card--register {
-  border-radius: 235px 15px 255px 15px / 15px 255px 15px 235px;
-  transform: rotate(1.2deg);
-}
-
-.soullink-home__card--archive {
-  border-radius: 15px 235px 15px 255px / 255px 15px 235px 15px;
-  transform: rotate(-1.1deg);
-}
-
-.soullink-home__card--register .soullink-home__card-icon {
-  color: var(--sl-green);
-  background: rgba(123, 160, 91, 0.16);
-  border: 2.5px dashed var(--sl-green);
-  transform: rotate(3deg);
-}
-
-.soullink-home__card--archive .soullink-home__card-icon {
-  color: var(--sl-blue);
-  background: rgba(95, 157, 201, 0.16);
-  border: 2.5px dashed var(--sl-blue);
-  transform: rotate(-4deg);
-}
-
-.soullink-panel__dialog.is-archive-mode {
-  width: 600px;
-}
-
-.soullink-register {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.soullink-register__note,
-.soullink-archive__note {
-  margin: 0;
-  padding: 8px 12px;
-  font-size: 12px;
-  line-height: 1.7;
-  background: rgba(242, 193, 78, 0.18);
-  border: 2px dashed rgba(61, 43, 31, 0.45);
-  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
-  transform: rotate(-0.5deg);
-}
-
-.soullink-register__add {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.soullink-register__input {
-  flex: 1;
-  min-width: 0;
-}
-
-.soullink-register__add .soullink-btn {
-  flex: none;
-  padding: 8px 12px;
-  font-size: 12.5px;
-}
-
-.soullink-register__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 11.5px;
-}
-
-.soullink-archive__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.soullink-register__status,
-.soullink-register__chat,
-.soullink-archive__count {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border-radius: 255px;
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.7);
-  border: 2px solid rgba(95, 157, 201, 0.7);
-  transform: rotate(-0.5deg);
-}
-
-.soullink-register__chat {
-  max-width: 55%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-style: italic;
-  color: #9c8f78;
-  border-style: dashed;
-}
-
-.soullink-register__list,
-.soullink-archive__list {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  max-height: 52vh;
-  overflow-y: auto;
-  padding: 2px 4px 6px;
-}
-
-.soullink-register__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 9px 12px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 2.5px solid var(--sl-ink-soft);
-  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
-  transform: rotate(-0.4deg);
-  transition: transform 0.15s ease, background 0.15s ease;
-}
-
-.soullink-register__item:hover {
-  background: rgba(255, 255, 255, 0.95);
-  transform: rotate(0.3deg);
-}
-
-.soullink-register__item-name {
-  flex: 1;
-  min-width: 0;
-  font-weight: 700;
-  font-size: 13.5px;
-  letter-spacing: 0.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.soullink-register__unregister {
-  flex: none;
-  padding: 4px 11px;
-  font-family: var(--sl-font);
-  font-size: 11px;
-  font-weight: 700;
-  color: #b03a48;
-  cursor: pointer;
-  background: rgba(229, 107, 111, 0.14);
-  border: 2px solid rgba(229, 107, 111, 0.8);
-  border-radius: 255px;
-  transition: background 0.15s ease, transform 0.15s ease;
-}
-
-.soullink-register__unregister:hover {
-  background: rgba(229, 107, 111, 0.32);
-  transform: rotate(-2deg);
-}
-
-.soullink-register__empty,
-.soullink-archive__empty {
-  padding: 20px 14px;
-  text-align: center;
-  font-size: 12.5px;
-  font-style: italic;
-  color: #9c8f78;
-  border: 2px dashed rgba(61, 43, 31, 0.3);
-  border-radius: 255px 14px 235px 14px / 14px 235px 14px 255px;
-}
-
-/* ---------- 档案系统 ---------- */
-.soullink-archive {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.soullink-archive__toolbar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex: 1 1 100%;
-}
-
-.soullink-archive__refine-all {
-  flex: none;
-  min-width: 148px;
-  padding: 7px 12px;
-  font-size: 12.5px;
-  background:
-    radial-gradient(circle at 26% 24%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 42%),
-    var(--sl-green);
-}
-
-.soullink-archive__analyze-all {
-  flex: none;
-  min-width: 148px;
-  padding: 7px 12px;
-  font-size: 12.5px;
-}
-
-.soullink-archive__auto-toggle {
-  flex: none;
-  min-width: 128px;
-  padding: 7px 12px;
-  font-size: 12.5px;
-}
-
-.soullink-archive__auto-toggle.is-active {
-  color: #fff;
-  background: rgba(76, 122, 92, 0.85);
-  border-color: rgba(76, 122, 92, 0.9);
-}
-
-.soullink-archive__card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 11px 13px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 3px solid var(--sl-ink);
-  border-radius: 18px 255px 18px 255px / 255px 18px 255px 18px;
-  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.18);
-  transform: rotate(-0.4deg);
-}
-
-.soullink-archive__card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.soullink-archive__card-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 15.5px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.soullink-archive__status {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  font-size: 11px;
-  border-radius: 255px;
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.7);
-  border: 2px solid rgba(95, 157, 201, 0.7);
-  transform: rotate(0.5deg);
-}
-
-.soullink-archive__status[data-state='busy'] {
-  color: #8a6d1f;
-  border-color: rgba(242, 193, 78, 0.95);
-  background: rgba(242, 193, 78, 0.22);
-}
-
-.soullink-archive__status[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-archive__status[data-state='error'] {
-  color: #b03a48;
-  border-color: rgba(229, 107, 111, 0.95);
-  background: rgba(229, 107, 111, 0.2);
-}
-
-button.soullink-archive__status {
-  font-family: var(--sl-font);
-  cursor: pointer;
-  transition: transform 0.15s ease, filter 0.15s ease;
-}
-
-button.soullink-archive__status:hover {
-  transform: rotate(-1.5deg) scale(1.05);
-  filter: brightness(1.07);
-}
-
-button.soullink-archive__status:active {
-  transform: rotate(0deg) scale(0.96);
-}
-
-.soullink-archive__analyze,
-.soullink-archive__refine,
-.soullink-archive__edit,
-.soullink-archive__collapse {
-  padding: 5px 11px;
-  font-family: var(--sl-font);
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.soullink-archive__analyze {
-  color: #fff;
-  background: var(--sl-violet);
-  border: 2.5px solid var(--sl-ink);
-  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.35);
-}
-
-.soullink-archive__analyze:hover:not(:disabled) {
-  transform: rotate(-1.5deg) translateY(-1px);
-}
-
-.soullink-archive__analyze:disabled {
-  opacity: 0.65;
-  cursor: wait;
-}
-
-.soullink-archive__refine {
-  color: #fff;
-  background: var(--sl-green);
-  border: 2.5px solid var(--sl-ink);
-  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.35);
-}
-
-.soullink-archive__refine:hover:not(:disabled) {
-  transform: rotate(1.5deg) translateY(-1px);
-}
-
-.soullink-archive__refine:disabled {
-  opacity: 0.65;
-  cursor: wait;
-}
-
-.soullink-archive__refine.is-cancelling {
-  color: var(--sl-ink);
-  background: rgba(242, 193, 78, 0.3);
-  border-color: var(--sl-yellow);
-}
-
-
-
-.soullink-archive__edit {
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.85);
-  border: 2.5px solid var(--sl-ink-soft);
-}
-
-.soullink-archive__edit:hover {
-  background: rgba(242, 193, 78, 0.25);
-  border-color: var(--sl-ink);
-  transform: rotate(1.5deg);
-}
-
-.soullink-archive__fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 12px;
-}
-
-.soullink-archive__field {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
-}
-
-.soullink-archive__field-label {
-  flex: none;
-  font-weight: 700;
-  color: var(--sl-violet);
-}
-
-.soullink-archive__field-label::after {
-  content: '：';
-}
-
-.soullink-archive__field-value {
-  flex: 1;
-  min-width: 0;
-  word-break: break-word;
-}
-
-.soullink-archive__field-value.is-empty {
-  color: #b9ab92;
-  font-style: italic;
-}
-
-.soullink-archive__field--edit {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-}
-
-.soullink-archive__section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding-top: 8px;
-  border-top: 2px dashed rgba(61, 43, 31, 0.25);
-}
-
-.soullink-archive__section-title {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--sl-pink);
-}
-
-.soullink-archive__section-title::before {
-  content: '✧ ';
-}
-
-.soullink-archive__section-items {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 0;
-  padding-left: 18px;
-  font-size: 12.5px;
-  line-height: 1.6;
-}
-
-.soullink-archive__section-empty {
-  font-size: 12px;
-  font-style: italic;
-  color: #b9ab92;
-}
-
-.soullink-archive__section-edit {
-  min-height: 62px;
-  resize: vertical;
-  font-size: 12.5px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.soullink-archive__edit-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.soullink-archive__edit-actions .soullink-btn {
-  flex: 1;
-  padding: 8px 10px;
-  font-size: 12.5px;
-}
-
-.soullink-archive__meta {
-  font-size: 11px;
-  text-align: right;
-  opacity: 0.65;
-}
-.soullink-archive__analyze.is-cancelling {
-  background: var(--sl-pink);
-  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.35);
-}
-
-.soullink-archive__status[data-state='cancelled'] {
-  color: #7a6f5c;
-  border-color: rgba(61, 43, 31, 0.5);
-  background: rgba(255, 255, 255, 0.7);
-  font-style: italic;
-}
-
-/* ---------- 世界书系统 ---------- */
-.soullink-home__card--worldbook {
-  border-radius: 255px 15px 235px 15px / 15px 235px 15px 255px;
-  transform: rotate(0.9deg);
-}
-
-.soullink-home__card--worldbook .soullink-home__card-icon {
-  color: var(--sl-yellow);
-  background: rgba(242, 193, 78, 0.16);
-  border: 2.5px dashed var(--sl-yellow);
-  transform: rotate(2deg);
-}
-
-.soullink-panel__dialog.is-worldbook-mode {
-  width: 600px;
-}
-
-.soullink-panel__dialog.is-round-mode {
-  width: 560px;
-}
-
-.soullink-worldbook {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.soullink-worldbook__note {
-  margin: 0;
-  padding: 8px 12px;
-  font-size: 12px;
-  line-height: 1.7;
-  background: rgba(242, 193, 78, 0.18);
-  border: 2px dashed rgba(61, 43, 31, 0.45);
-  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
-  transform: rotate(-0.5deg);
-}
-
-.soullink-worldbook__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 11.5px;
-}
-
-.soullink-worldbook__status,
-.soullink-worldbook__chat {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border-radius: 255px;
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.7);
-  border: 2px solid rgba(95, 157, 201, 0.7);
-  transform: rotate(-0.5deg);
-}
-
-.soullink-worldbook__status[data-state='busy'] {
-  color: #8a6d1f;
-  border-color: rgba(242, 193, 78, 0.95);
-  background: rgba(242, 193, 78, 0.22);
-}
-
-.soullink-worldbook__status[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-worldbook__status[data-state='error'] {
-  color: #b03a48;
-  border-color: rgba(229, 107, 111, 0.95);
-  background: rgba(229, 107, 111, 0.2);
-}
-
-.soullink-worldbook__refresh,
-.soullink-worldbook__clear {
-  flex: none;
-  padding: 6px 12px;
-  font-size: 12.5px;
-}
-
-.soullink-worldbook__banner {
-  padding: 8px 12px;
-  font-size: 12px;
-  line-height: 1.7;
-  color: #8a6d1f;
-  background: rgba(242, 193, 78, 0.25);
-  border: 2px dashed rgba(138, 109, 31, 0.6);
-  border-radius: 14px 255px 12px 255px / 255px 12px 255px 14px;
-}
-
-.soullink-worldbook__list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.soullink-worldbook__empty,
-.soullink-worldbook__book-empty {
-  padding: 10px 12px;
-  font-size: 12.5px;
-  font-style: italic;
-  color: #b9ab92;
-  text-align: center;
-  border: 2px dashed rgba(61, 43, 31, 0.25);
-  border-radius: 12px;
-}
-
-.soullink-worldbook__book {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 9px 12px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 3px solid var(--sl-ink);
-  border-radius: 18px 255px 18px 255px / 255px 18px 255px 18px;
-  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.18);
-  transform: rotate(-0.4deg);
-}
-
-.soullink-worldbook__book-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 5px;
-  border-bottom: 2px dashed rgba(61, 43, 31, 0.25);
-}
-
-.soullink-worldbook__book-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.soullink-archive__card-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1 1 100%;
-  justify-content: flex-end;
-}
-
-.soullink-archive__collapse {
-  flex: 0 0 auto;
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.85);
-  border: 2.5px solid var(--sl-ink-soft);
-}
-
-.soullink-archive__collapse:hover {
-  background: rgba(242, 193, 78, 0.25);
-  border-color: var(--sl-ink);
-  transform: rotate(1.5deg);
-}
-
-.soullink-archive__card.is-collapsed .soullink-archive__status,
-.soullink-archive__card.is-collapsed .soullink-archive__card-actions,
-.soullink-archive__card.is-collapsed .soullink-archive__body {
-  display: none;
-}
-
-.soullink-worldbook__book-count {
-  flex: none;
-  font-size: 11px;
-  color: var(--sl-violet);
-}
-
-.soullink-worldbook__collapse {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.8);
-  border: 2px solid var(--sl-ink-soft);
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.soullink-worldbook__collapse:hover {
-  background: rgba(124, 92, 191, 0.16);
-  border-color: var(--sl-violet);
-  transform: rotate(-6deg) scale(1.08);
-}
-
-.soullink-worldbook__book.is-collapsed {
-  padding-bottom: 6px;
-}
-
-.soullink-worldbook__book.is-collapsed .soullink-worldbook__book-head {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.soullink-worldbook__book-body[hidden] {
-  display: none;
-}
-
-.soullink-worldbook__search {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 5px 12px;
-  font-size: 12px;
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.85);
-  border: 2px solid rgba(61, 43, 31, 0.35);
-  border-radius: 255px;
-  outline: none;
-}
-
-.soullink-worldbook__search:focus {
-  border-color: rgba(95, 157, 201, 0.9);
-  box-shadow: 0 0 0 2px rgba(95, 157, 201, 0.18);
-}
-
-.soullink-worldbook__entry {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 4px 2px;
-  cursor: pointer;
-}
-
-/* 行级搜索过滤：entry 显式 display:flex 会覆盖 UA 的 [hidden] 规则，必须显式隐藏 */
-.soullink-worldbook__entry[hidden] {
-  display: none;
-}
-
-.soullink-worldbook__entry:hover {
-  background: rgba(242, 193, 78, 0.16);
-  border-radius: 8px;
-}
-
-.soullink-worldbook__entry input[type='checkbox'] {
-  flex: none;
-  margin: 3px 0 0 0;
-  accent-color: var(--sl-pink);
-  cursor: pointer;
-}
-
-.soullink-worldbook__entry input[type='checkbox']:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.soullink-worldbook__entry-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.soullink-worldbook__entry-name {
-  font-size: 12.5px;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-.soullink-worldbook__entry.is-excluded .soullink-worldbook__entry-name {
-  color: #b9ab92;
-  text-decoration: line-through;
-}
-
-.soullink-worldbook__entry-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.soullink-worldbook__badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 6px;
-  font-size: 10px;
-  line-height: 1.6;
-  border-radius: 255px;
-  border: 1.5px solid rgba(61, 43, 31, 0.4);
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--sl-ink-soft);
-}
-
-.soullink-worldbook__badge.is-constant {
-  color: #7a3b8f;
-  border-color: rgba(124, 92, 191, 0.8);
-  background: rgba(124, 92, 191, 0.12);
-}
-
-.soullink-worldbook__badge.is-position {
-  color: var(--sl-blue);
-  border-color: rgba(95, 157, 201, 0.8);
-  background: rgba(95, 157, 201, 0.12);
-}
-
-.soullink-worldbook__badge.is-triggered {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-worldbook__badge.is-excluded {
-  color: #b03a48;
-  border-color: rgba(229, 107, 111, 0.95);
-  background: rgba(229, 107, 111, 0.2);
-}
-
-.soullink-worldbook__badge.is-disabled {
-  color: #8a8a8a;
-  border-color: rgba(120, 120, 120, 0.6);
-  background: rgba(120, 120, 120, 0.12);
-  text-decoration: line-through;
-}
-
-/* ---------- 角色注册：发送前角色推演开关 ---------- */
-.soullink-register__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 11.5px;
-}
-
-.soullink-register__npc-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border-radius: 255px;
-  color: var(--sl-pink);
-  background: rgba(255, 255, 255, 0.7);
-  border: 2px solid rgba(229, 107, 111, 0.7);
-  transform: rotate(0.5deg);
-}
-
-.soullink-register__npc-status[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-register__npc-toggle.is-active {
-  border-color: var(--sl-green);
-  color: #4f7a33;
-  background: rgba(123, 160, 91, 0.18);
-}
-
-/* ---------- 正则过滤 ---------- */
-/* 面板内 hidden 属性优先：.soullink-filter__editor 等类设置了 display:flex，
-   会覆盖 UA 的 [hidden]{display:none}，导致「取消/保存后编辑框关不掉」；
-   统一在面板作用域内让 hidden 生效，避免影响宿主页面其他元素。 */
-.soullink-panel [hidden] {
-  display: none !important;
-}
-
-.soullink-filter {
-  margin-top: 4px;
-  padding-top: 14px;
-  border-top: 2px dashed rgba(61, 43, 31, 0.35);
-}
-
-.soullink-filter__status {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  padding: 3px 10px;
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: normal;
-  word-break: break-all;
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.6);
-  border: 2px solid rgba(95, 157, 201, 0.85);
-  transform: rotate(0.8deg);
-}
-
-.soullink-filter__status::before {
-  content: '✎';
-  margin-right: 4px;
-  font-size: 12px;
-}
-
-.soullink-filter__status[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.95);
-  background: rgba(123, 160, 91, 0.2);
-}
-
-.soullink-filter__hint {
-  margin: 0;
-  padding-left: 8px;
-  font-size: 11.5px;
-  line-height: 1.7;
-  opacity: 0.6;
-  border-left: 3px solid var(--sl-yellow);
-}
-
-.soullink-filter__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.soullink-filter__toolbar .soullink-btn {
-  flex: 1;
-  min-width: 92px;
-}
-
-.soullink-filter__editor {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  background: rgba(242, 193, 78, 0.14);
-  border: 2px dashed rgba(61, 43, 31, 0.45);
-  border-radius: 12px 255px 14px 255px / 255px 14px 255px 12px;
-  transform: rotate(-0.3deg);
-}
-
-.soullink-filter__editor-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.soullink-filter__editor-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.soullink-filter__valid {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 9px;
-  border-radius: 255px;
-  font-size: 11px;
-  color: var(--sl-blue);
-  background: rgba(255, 255, 255, 0.7);
-  border: 2px solid rgba(95, 157, 201, 0.7);
-  transform: rotate(-0.5deg);
-}
-
-.soullink-filter__valid[data-state='ok'] {
-  color: #4f7a33;
-  border-color: rgba(123, 160, 91, 0.9);
-  background: rgba(123, 160, 91, 0.18);
-}
-
-.soullink-filter__valid[data-state='error'] {
-  color: #b03a48;
-  border-color: rgba(229, 107, 111, 0.9);
-  background: rgba(229, 107, 111, 0.14);
-}
-
-.soullink-filter__field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.soullink-filter__label {
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  opacity: 0.85;
-}
-
-.soullink-filter__regex-input {
-  font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
-  font-size: 12.5px;
-}
-
-.soullink-filter__editor-hint {
-  margin: 0;
-  font-size: 11.5px;
-  line-height: 1.7;
-  opacity: 0.6;
-}
-
-.soullink-filter__editor-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.soullink-filter__editor-actions .soullink-btn {
-  flex: 1;
-}
-
-.soullink-filter__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.soullink-filter__empty {
-  margin: 0;
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.7;
-  opacity: 0.6;
-  background: rgba(255, 255, 255, 0.5);
-  border: 2px dashed rgba(61, 43, 31, 0.35);
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-}
-
-.soullink-filter__row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.65);
-  border: 2px solid var(--sl-ink-soft);
-  border-radius: 10px 255px 12px 255px / 255px 12px 255px 10px;
-  transform: rotate(-0.4deg);
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.soullink-filter__row:hover {
-  transform: rotate(0.3deg);
-  background: rgba(255, 255, 255, 0.85);
-}
-
-.soullink-filter__row.is-disabled {
-  opacity: 0.55;
-}
-
-.soullink-filter__toggle {
-  position: relative;
-  flex: none;
-  width: 38px;
-  height: 22px;
-  cursor: pointer;
-}
-
-.soullink-filter__toggle input {
-  position: absolute;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  cursor: pointer;
-}
-
-.soullink-filter__toggle span {
-  position: absolute;
-  inset: 0;
-  border-radius: 255px;
-  background: rgba(61, 43, 31, 0.25);
-  border: 2px solid var(--sl-ink-soft);
-  transition: background 0.18s ease, border-color 0.18s ease;
-}
-
-.soullink-filter__toggle span::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2px solid var(--sl-ink-soft);
-  transition: transform 0.18s ease, background 0.18s ease;
-}
-
-.soullink-filter__toggle input:checked + span {
-  background: rgba(123, 160, 91, 0.55);
-  border-color: rgba(79, 122, 51, 0.9);
-}
-
-.soullink-filter__toggle input:checked + span::after {
-  transform: translateX(15px);
-  background: #7ba05b;
-}
-
-.soullink-filter__info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.soullink-filter__name {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-}
-
-.soullink-filter__pattern {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
-  font-size: 11px;
-  opacity: 0.72;
-}
-
-.soullink-filter__actions {
-  flex: none;
-  display: flex;
-  gap: 4px;
-}
-
-.soullink-filter__action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.8);
-  border: 2px solid var(--sl-ink-soft);
-  border-radius: 255px 10px 235px 10px / 10px 235px 10px 255px;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.soullink-filter__action:hover {
-  background: rgba(124, 92, 191, 0.16);
-  border-color: var(--sl-violet);
-  transform: rotate(-6deg) scale(1.08);
-}
-
-.soullink-filter__action--danger:hover {
-  background: rgba(229, 107, 111, 0.18);
-  border-color: rgba(176, 58, 72, 0.9);
-}
-
-/* ---------- 档案分析失败弹层：展示 AI 回复原文便于调试 ---------- */
+/* =========================================================
+   档案分析失败弹层：展示 AI 回复原文便于调试
+   ========================================================= */
 .soullink-archive-error {
   position: fixed;
   inset: 0;
@@ -2704,7 +2003,9 @@ button.soullink-archive__status:active {
   align-items: center;
   justify-content: center;
   pointer-events: auto;
-  background: rgba(61, 43, 31, 0.35);
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 .soullink-archive-error.is-open {
@@ -2721,13 +2022,9 @@ button.soullink-archive__status:active {
   font-size: 14px;
   color: var(--sl-ink);
   background: var(--sl-paper);
-  border: 3px solid var(--sl-ink);
-  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
-  box-shadow:
-    8px 9px 0 rgba(61, 43, 31, 0.16),
-    0 18px 34px rgba(61, 43, 31, 0.28);
-  filter: url(#soullink-wobble);
-  transform: rotate(-0.6deg);
+  border: 0.5px solid var(--sl-border-strong);
+  border-radius: var(--sl-radius-window);
+  box-shadow: var(--sl-shadow-window);
 }
 
 .soullink-archive-error__head {
@@ -2741,7 +2038,6 @@ button.soullink-archive__status:active {
   flex: 1;
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: 1px;
 }
 
 .soullink-archive-error__close {
@@ -2756,14 +2052,14 @@ button.soullink-archive__status:active {
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  color: var(--sl-ink);
-  background: var(--sl-paper-deep);
-  border: 2px solid var(--sl-ink);
+  color: var(--sl-text-secondary);
+  background: var(--sl-btn-bg);
+  border: none;
   border-radius: 50%;
 }
 
 .soullink-archive-error__close:hover {
-  filter: brightness(1.06);
+  background: var(--sl-btn-bg-hover);
 }
 
 .soullink-archive-error__hint {
@@ -2774,10 +2070,9 @@ button.soullink-archive__status:active {
   font-size: 12.5px;
   line-height: 1.6;
   word-break: break-all;
-  color: #b03a48;
-  background: rgba(229, 107, 111, 0.14);
-  border: 2px dashed rgba(229, 107, 111, 0.75);
-  border-radius: 10px 255px 10px 255px / 255px 10px 255px 10px;
+  color: var(--sl-pink);
+  background: var(--sl-danger-bg);
+  border-radius: 8px;
 }
 
 .soullink-archive-error__label {
@@ -2793,15 +2088,15 @@ button.soullink-archive__status:active {
   margin: 0;
   padding: 10px 12px;
   overflow: auto;
-  font-family: Consolas, "Cascadia Code", "Courier New", monospace;
+  font-family: var(--sl-mono);
   font-size: 12.5px;
   line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--sl-ink);
-  background: rgba(255, 255, 255, 0.72);
-  border: 2.5px solid var(--sl-ink-soft);
-  border-radius: 14px 255px 14px 255px / 255px 14px 255px 14px;
+  background: var(--sl-pre-bg);
+  border: 0.5px solid var(--sl-border);
+  border-radius: 8px;
 }
 
 .soullink-archive-error__actions {
@@ -2814,663 +2109,883 @@ button.soullink-archive__status:active {
   flex: 1;
 }
 
-.soullink-archive-error__close-btn.soullink-btn {
-  color: var(--sl-ink);
-  background: var(--sl-paper-deep);
+/* ---------- 滚动条 ---------- */
+.soullink-panel ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.soullink-panel ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.soullink-panel ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.32);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+.soullink-panel ::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* =========================================================
-   SoulLink · 聊天气泡风格（qq）
-   浅灰底 + 白色圆角卡片 + QQ 蓝渐变主色；覆盖手绘涂鸦的
-   不规则圆角 / 抖动滤镜 / 旋转 / 虚线描边。
-   用 :where() 保持与基础规则同等的特异性，ok/error 等
-   [data-state] 状态色仍由各自的原规则继续生效。
+   SoulLink · macOS 风格主题（macos）
+   ---------------------------------------------------------
+   设计语言参考 Apple HIG 与 smart-coder-labs/apple-design-system：
+   磨砂玻璃窗口（backdrop-filter）+ 红绿灯窗控（悬停显符号）
+   + SF 字体栈 + #007AFF 蓝色强调 + Aqua 渐变按钮 + 发丝线描边
+   + 分层阴影 + 弹簧动效；亮/暗双模式（跟随系统 prefers-color-scheme）。
+   覆盖块统一用 :where([data-theme='macos']) 保持与基础规则同等的
+   特异性，仅换变量与少量质感规则。
+   ========================================================= */
+
+.soullink-sphere:where([data-theme='macos']),
+.soullink-panel:where([data-theme='macos']) {
+  --sl-titlebar-bg: rgba(246, 246, 248, 0.72);
+  --sl-window-bg: rgba(246, 246, 248, 0.82);
+  --sl-sidebar-bg: rgba(236, 236, 240, 0.66);
+  --sl-sidebar-item-active: rgba(255, 255, 255, 0.92);
+  --sl-content-bg: rgba(242, 242, 247, 0.66);
+  --sl-sidebar-item-hover: rgba(0, 0, 0, 0.055);
+  --sl-radius-window: 12px;
+  --sl-shadow-window: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16), 0 28px 72px rgba(0, 0, 0, 0.3);
+  --sl-ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 窗口：磨砂玻璃 */
+.soullink-panel:where([data-theme='macos']) .soullink-panel__dialog {
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  background: var(--sl-window-bg);
+  box-shadow: var(--sl-shadow-window);
+  border-color: rgba(0, 0, 0, 0.16);
+}
+
+/* 标题栏：半透明毛玻璃 */
+.soullink-panel:where([data-theme='macos']) .soullink-panel__titlebar {
+  background: var(--sl-titlebar-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* 窗控：macOS 风格圆形图标按钮，关闭悬停变红 */
+.soullink-panel:where([data-theme='macos']) .soullink-panel__back,
+.soullink-panel:where([data-theme='macos']) .soullink-panel__close {
+  font-size: 13px;
+  color: var(--sl-text-secondary);
+  transition: background 0.15s var(--sl-ease-apple), color 0.15s var(--sl-ease-apple), transform 0.15s var(--sl-ease-apple);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-panel__back:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--sl-ink);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-panel__close:hover {
+  background: #ff5f57;
+  color: #fff;
+}
+
+/* 分组卡片 */
+.soullink-panel:where([data-theme='macos']) .soullink-panel__section {
+  border-color: rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  box-shadow: var(--sl-shadow-sm);
+}
+
+/* 按钮：Aqua bezel 渐变 */
+.soullink-panel:where([data-theme='macos']) .soullink-btn {
+  border-radius: 7px;
+  border-color: rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, #fdfdfe, #f1f1f4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: background 0.15s var(--sl-ease-apple), transform 0.08s var(--sl-ease-apple), box-shadow 0.15s ease;
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffffff, #f4f4f7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-btn:active:not(:disabled) {
+  background: linear-gradient(180deg, #e8e8ed, #f0f0f4);
+  transform: scale(0.97);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-btn--primary {
+  background: linear-gradient(180deg, #0a84ff, #0071e3);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 1px 2px rgba(0, 122, 255, 0.3);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2b93ff, #0077ed);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-btn--primary:active:not(:disabled) {
+  background: linear-gradient(180deg, #0063d6, #0069d9);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-btn--ghost {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-btn--ghost:hover:not(:disabled) {
+  background: var(--sl-accent-tint);
+  box-shadow: none;
+}
+
+/* 输入框：聚焦蓝环 */
+.soullink-panel:where([data-theme='macos']) .soullink-input {
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(0, 0, 0, 0.12);
+  transition: border-color 0.15s ease, box-shadow 0.15s var(--sl-ease-apple);
+}
+
+.soullink-panel:where([data-theme='macos']) .soullink-input:focus {
+  border-color: var(--sl-accent);
+  box-shadow: 0 0 0 3.5px rgba(0, 122, 255, 0.22);
+}
+
+/* 下拉框箭头：macos 输入框的 background 简写会清掉基础规则的箭头，此处补回 */
+.soullink-panel:where([data-theme='macos']) select.soullink-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2386868b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 L6 7.5 L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px;
+}
+
+/* 日志控制台 */
+.soullink-panel:where([data-theme='macos']) .soullink-log__console {
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* 概览 Logo：App Icon 式 */
+.soullink-panel:where([data-theme='macos']) .soullink-home__logo {
+  border-radius: 13px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 4px 10px rgba(0, 113, 227, 0.35);
+}
+
+/* 悬浮球 */
+.soullink-sphere:where([data-theme='macos']) {
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.16),
+    0 4px 14px rgba(0, 0, 0, 0.2),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- macOS 暗色模式（跟随系统） ---------- */
+@media (prefers-color-scheme: dark) {
+  .soullink-sphere:where([data-theme='macos']),
+  .soullink-panel:where([data-theme='macos']) {
+    --sl-ink: #f5f5f7;
+    --sl-ink-soft: rgba(255, 255, 255, 0.55);
+    --sl-ink-faint: rgba(255, 255, 255, 0.3);
+    --sl-text-secondary: #98989d;
+    --sl-text-tertiary: #6e6e73;
+    --sl-paper: #1c1c1e;
+    --sl-paper-deep: #2c2c2e;
+    --sl-surface: #1c1c1e;
+    --sl-surface-muted: #2c2c2e;
+    --sl-window-bg: rgba(28, 28, 30, 0.8);
+    --sl-titlebar-bg: rgba(40, 40, 42, 0.72);
+    --sl-sidebar-bg: rgba(38, 38, 40, 0.7);
+    --sl-sidebar-item-hover: rgba(255, 255, 255, 0.08);
+    --sl-sidebar-item-active: rgba(84, 84, 88, 0.6);
+    --sl-content-bg: rgba(24, 24, 26, 0.7);
+    --sl-border: rgba(255, 255, 255, 0.12);
+    --sl-border-strong: rgba(255, 255, 255, 0.2);
+    --sl-accent: #0a84ff;
+    --sl-accent-hover: #409cff;
+    --sl-accent-tint: rgba(10, 132, 255, 0.2);
+    --sl-btn-bg: rgba(120, 120, 128, 0.24);
+    --sl-btn-bg-hover: rgba(120, 120, 128, 0.36);
+    --sl-btn-bg-active: rgba(120, 120, 128, 0.44);
+    --sl-switch-off: rgba(120, 120, 128, 0.44);
+    --sl-segmented-bg: rgba(120, 120, 128, 0.24);
+    --sl-segmented-active: #48484a;
+    --sl-console-bg: #101012;
+    --sl-pre-bg: #101012;
+    --sl-note-bg: rgba(120, 120, 128, 0.16);
+    --sl-danger-bg: rgba(255, 69, 58, 0.2);
+    --sl-warn-bg: rgba(255, 159, 10, 0.2);
+    --sl-ok-bg: rgba(50, 215, 75, 0.18);
+    --sl-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --sl-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3);
+    --sl-shadow-window: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.5), 0 28px 72px rgba(0, 0, 0, 0.6);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-panel__dialog {
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-btn {
+    background: linear-gradient(180deg, #3a3a3c, #2c2c2e);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, #454547, #333335);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-btn:active:not(:disabled) {
+    background: linear-gradient(180deg, #262628, #2e2e30);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-btn--primary {
+    background: linear-gradient(180deg, #0a84ff, #0064d6);
+    border-color: rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-btn--primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #2b93ff, #0a6fe0);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-btn--ghost {
+    background: transparent;
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-input {
+    background: rgba(44, 44, 46, 0.8);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f5f5f7;
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-log__row:hover,
+  .soullink-panel:where([data-theme='macos']) .soullink-log__row.is-expanded {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-log__detail {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-log__row--warn .soullink-log__text {
+    color: #ffb340;
+  }
+
+  .soullink-sphere:where([data-theme='macos']) {
+    background:
+      radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.1) 42%, rgba(255, 255, 255, 0.03) 72%),
+      linear-gradient(180deg, rgba(72, 72, 74, 0.9), rgba(28, 28, 30, 0.9));
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .soullink-panel:where([data-theme='macos']) .soullink-panel__back:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
+
+/* =========================================================
+   SoulLink · 手绘涂鸦主题（paper）
+   牛皮纸便签 + 手绘抖动描边 + 虚线点缀 + 蜡笔红绿灯；
+   用 #soullink-wobble 抖动滤镜与不规则圆角模拟手绘质感。
+   ========================================================= */
+
+.soullink-sphere:where([data-theme='paper']),
+.soullink-panel:where([data-theme='paper']) {
+  --sl-ink: #3d2b1f;
+  --sl-ink-soft: rgba(61, 43, 31, 0.45);
+  --sl-ink-faint: rgba(61, 43, 31, 0.28);
+  --sl-text-secondary: #7a6a55;
+  --sl-text-tertiary: #a08d75;
+  --sl-paper: #fdf6e3;
+  --sl-paper-deep: #f8efd9;
+  --sl-surface: #fdf6e3;
+  --sl-surface-muted: #f8efd9;
+  --sl-window-bg: rgba(250, 245, 232, 0.94);
+  --sl-titlebar-bg: rgba(248, 239, 217, 0.92);
+  --sl-sidebar-bg: rgba(246, 238, 218, 0.9);
+  --sl-sidebar-item-hover: rgba(124, 92, 191, 0.1);
+  --sl-sidebar-item-active: #fffbe9;
+  --sl-content-bg: rgba(250, 245, 232, 0.9);
+  --sl-border: rgba(61, 43, 31, 0.35);
+  --sl-border-strong: rgba(61, 43, 31, 0.6);
+  --sl-violet: #7c5cbf;
+  --sl-pink: #e56b6f;
+  --sl-yellow: #e8a523;
+  --sl-green: #6ba368;
+  --sl-blue: #7c5cbf;
+  --sl-accent: #7c5cbf;
+  --sl-accent-hover: #6a4cb0;
+  --sl-accent-tint: rgba(124, 92, 191, 0.16);
+  --sl-btn-bg: rgba(124, 92, 191, 0.1);
+  --sl-btn-bg-hover: rgba(124, 92, 191, 0.18);
+  --sl-btn-bg-active: rgba(124, 92, 191, 0.24);
+  --sl-switch-off: rgba(160, 141, 117, 0.4);
+  --sl-switch-on: #6ba368;
+  --sl-segmented-bg: rgba(160, 141, 117, 0.18);
+  --sl-segmented-active: #fffbe9;
+  --sl-console-bg: #fbf4e0;
+  --sl-pre-bg: #fbf4e0;
+  --sl-note-bg: rgba(229, 107, 111, 0.1);
+  --sl-danger-bg: rgba(229, 107, 111, 0.16);
+  --sl-warn-bg: rgba(232, 165, 35, 0.18);
+  --sl-ok-bg: rgba(107, 163, 104, 0.18);
+  --sl-shadow-sm: 3px 4px 0 rgba(61, 43, 31, 0.14);
+  --sl-shadow-md: 4px 5px 0 rgba(61, 43, 31, 0.16), 0 10px 16px rgba(61, 43, 31, 0.12);
+  --sl-shadow-window: 8px 9px 0 rgba(61, 43, 31, 0.16), 0 18px 34px rgba(61, 43, 31, 0.28);
+  --sl-radius-window: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  --sl-radius-card: 255px 12px 235px 12px / 12px 235px 12px 255px;
+  --sl-radius-control: 255px 10px 235px 10px / 10px 235px 10px 255px;
+}
+
+/* 悬浮球：纸片小贴纸 */
+.soullink-sphere:where([data-theme='paper']) {
+  width: 48px;
+  height: 48px;
+  color: var(--sl-violet);
+  font-size: 15px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 46%),
+    rgba(253, 246, 227, 0.92);
+  border: 2px solid rgba(61, 43, 31, 0.5);
+  box-shadow:
+    3px 4px 0 rgba(61, 43, 31, 0.18),
+    0 8px 14px rgba(61, 43, 31, 0.16);
+  transform: rotate(-4deg);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.soullink-sphere:where([data-theme='paper'])::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 2px dashed var(--sl-violet);
+  border-radius: 50%;
+  opacity: 0.4;
+  pointer-events: none;
+  animation: soullink-spin 16s linear infinite;
+}
+
+.soullink-sphere:where([data-theme='paper']) .soullink-sphere__icon {
+  transform: rotate(5deg);
+}
+
+.soullink-sphere:where([data-theme='paper']):hover {
+  transform: rotate(3deg) scale(1.07);
+  box-shadow:
+    4px 5px 0 rgba(61, 43, 31, 0.2),
+    0 10px 16px rgba(61, 43, 31, 0.18);
+}
+
+.soullink-sphere:where([data-theme='paper']):active {
+  transform: rotate(-2deg) scale(0.94);
+}
+
+.soullink-sphere:where([data-theme='paper']).is-dragging {
+  transform: rotate(0deg) scale(1.06);
+}
+
+/* 窗口：牛皮纸便签卡 */
+.soullink-panel:where([data-theme='paper']) .soullink-panel__dialog {
+  border: 3px solid var(--sl-ink);
+  border-radius: var(--sl-radius-window);
+  background: var(--sl-window-bg);
+  box-shadow: var(--sl-shadow-window);
+  filter: url(#soullink-wobble);
+  transform: rotate(-0.5deg);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__dialog.is-dragging {
+  transform: rotate(0deg);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__titlebar {
+  border-bottom: 2px dashed rgba(61, 43, 31, 0.4);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__titlebar-title {
+  font-weight: 700;
+  letter-spacing: 1px;
+  transform: translateX(-50%) rotate(-1deg);
+}
+
+/* 窗控：手绘圆形按钮（纸片描边 + 歪斜） */
+.soullink-panel:where([data-theme='paper']) .soullink-panel__back,
+.soullink-panel:where([data-theme='paper']) .soullink-panel__close {
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid var(--sl-ink);
+  border-radius: 50% 47% 53% 50% / 47% 53% 50% 53%;
+  background: transparent;
+  color: var(--sl-ink);
+  font-size: 14px;
+  font-weight: 700;
+  transform: rotate(-4deg);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__close {
+  border-radius: 47% 53% 50% 50% / 53% 47% 53% 47%;
+  transform: rotate(4deg);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__back:hover {
+  background: var(--sl-yellow);
+  transform: rotate(6deg) scale(1.12);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__close:hover {
+  background: var(--sl-pink);
+  color: #fff;
+  transform: rotate(-8deg) scale(1.15);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__toolbar {
+  border-bottom: 2px dashed rgba(61, 43, 31, 0.35);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__title {
+  letter-spacing: 1px;
+  transform: rotate(-0.5deg);
+}
+
+/* 分组卡片：便签纸 */
+.soullink-panel:where([data-theme='paper']) .soullink-panel__section {
+  border: 2px solid rgba(61, 43, 31, 0.45);
+  border-radius: var(--sl-radius-card);
+  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.12);
+  filter: url(#soullink-wobble);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__section:nth-child(even) {
+  transform: rotate(0.4deg);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__section:nth-child(odd) {
+  transform: rotate(-0.3deg);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__section-title::before {
+  content: '✎';
+  margin-right: 6px;
+  font-size: 12px;
+  color: var(--sl-pink);
+  transform: rotate(-12deg);
+  display: inline-block;
+}
+
+/* 按钮：手绘描边 */
+.soullink-panel:where([data-theme='paper']) .soullink-btn {
+  border: 2.5px solid var(--sl-ink);
+  border-radius: var(--sl-radius-control);
+  background: var(--sl-paper);
+  box-shadow: 2px 3px 0 rgba(61, 43, 31, 0.16);
+  font-weight: 700;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-btn:hover:not(:disabled) {
+  background: var(--sl-paper-deep);
+  transform: rotate(-1.2deg) scale(1.03);
+  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.2);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-btn:active:not(:disabled) {
+  transform: translate(1px, 1px) rotate(0.6deg);
+  box-shadow: 1px 1px 0 rgba(61, 43, 31, 0.2);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-btn--primary {
+  background: var(--sl-violet);
+  color: #fff;
+  border-color: var(--sl-violet);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-btn--primary:hover:not(:disabled) {
+  background: var(--sl-accent-hover);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-btn--ghost {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+  color: var(--sl-violet);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-btn--ghost:hover:not(:disabled) {
+  background: var(--sl-accent-tint);
+  border-color: rgba(124, 92, 191, 0.4);
+}
+
+/* 输入框：手绘 */
+.soullink-panel:where([data-theme='paper']) .soullink-input {
+  border: 2.5px solid var(--sl-ink);
+  border-radius: var(--sl-radius-control);
+  background: rgba(253, 246, 227, 0.9);
+  box-shadow: 2px 2px 0 rgba(61, 43, 31, 0.1);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-input:focus {
+  border-color: var(--sl-violet);
+  box-shadow: 3px 4px 0 rgba(124, 92, 191, 0.22);
+}
+
+/* 下拉框箭头：background 简写已重置 repeat/position/size，需逐项补回，否则 SVG 平铺成折线 */
+.soullink-panel:where([data-theme='paper']) select.soullink-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%237c5cbf' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 L6 7.5 L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px;
+}
+
+/* 开关：手绘 */
+.soullink-panel:where([data-theme='paper']) .soullink-switch {
+  border: 2.5px solid var(--sl-ink);
+  width: 42px;
+  height: 24px;
+  filter: url(#soullink-wobble);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-switch__thumb {
+  box-shadow: 1px 2px 0 rgba(61, 43, 31, 0.3);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-filter__toggle span {
+  border: 2px solid var(--sl-ink);
+  width: 38px;
+  height: 22px;
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-filter__toggle span::after {
+  box-shadow: 1px 2px 0 rgba(61, 43, 31, 0.3);
+}
+
+/* 说明文字：便签条 */
+.soullink-panel:where([data-theme='paper']) .soullink-api__hint,
+.soullink-panel:where([data-theme='paper']) .soullink-filter__hint,
+.soullink-panel:where([data-theme='paper']) .soullink-filter__editor-hint,
+.soullink-panel:where([data-theme='paper']) .soullink-preset__note,
+.soullink-panel:where([data-theme='paper']) .soullink-register__note,
+.soullink-panel:where([data-theme='paper']) .soullink-archive__note,
+.soullink-panel:where([data-theme='paper']) .soullink-worldbook__note,
+.soullink-panel:where([data-theme='paper']) .soullink-round__note {
+  padding: 7px 10px;
+  background: var(--sl-note-bg);
+  border-left: 3px solid var(--sl-pink);
+  transform: rotate(-0.4deg);
+}
+
+/* 日志控制台：格子纸 */
+.soullink-panel:where([data-theme='paper']) .soullink-log__console {
+  background:
+    repeating-linear-gradient(transparent 0 22px, rgba(61, 43, 31, 0.06) 22px 23px),
+    var(--sl-console-bg);
+  border: 2.5px solid var(--sl-ink);
+  border-radius: var(--sl-radius-card);
+  filter: url(#soullink-wobble);
+}
+
+/* 概览 Logo：贴纸 */
+.soullink-panel:where([data-theme='paper']) .soullink-home__logo {
+  background: var(--sl-violet);
+  border: 2.5px solid var(--sl-ink);
+  border-radius: 44% 56% 52% 48% / 56% 44% 56% 44%;
+  transform: rotate(-6deg);
+  box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.18);
+}
+
+/* 状态栏 */
+.soullink-panel:where([data-theme='paper']) .soullink-panel__footer {
+  border-top: 2px dashed rgba(61, 43, 31, 0.35);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-panel__theme-menu {
+  border: 2px solid var(--sl-ink);
+  border-radius: var(--sl-radius-control);
+  filter: url(#soullink-wobble);
+  transform: rotate(-0.5deg);
+}
+
+.soullink-panel:where([data-theme='paper']) .soullink-confirm__card,
+.soullink-panel:where([data-theme='paper']) .soullink-archive-error__card {
+  border: 3px solid var(--sl-ink);
+  border-radius: var(--sl-radius-window);
+  box-shadow: var(--sl-shadow-window);
+  filter: url(#soullink-wobble);
+  transform: rotate(-0.6deg);
+}
+
+/* =========================================================
+   SoulLink · 聊天气泡主题（qq）
+   聊天窗质感：白底圆角窗口、气泡卡片、蓝色点缀。
    ========================================================= */
 
 .soullink-sphere:where([data-theme='qq']),
 .soullink-panel:where([data-theme='qq']) {
-  --sl-ink: #1f2329;
-  --sl-ink-soft: rgba(31, 35, 41, 0.4);
-  --sl-paper: #f2f3f5;
-  --sl-paper-deep: #e9ebee;
+  --sl-ink: #1a1a1a;
+  --sl-ink-soft: rgba(0, 0, 0, 0.4);
+  --sl-ink-faint: rgba(0, 0, 0, 0.24);
+  --sl-text-secondary: #8a8a8e;
+  --sl-text-tertiary: #b0b0b5;
+  --sl-paper: #ffffff;
+  --sl-paper-deep: #f7f8fa;
+  --sl-surface: #ffffff;
+  --sl-surface-muted: #f7f8fa;
+  --sl-window-bg: #ffffff;
+  --sl-titlebar-bg: #f7f8fa;
+  --sl-sidebar-bg: #f0f1f4;
+  --sl-sidebar-item-hover: rgba(18, 183, 245, 0.08);
+  --sl-sidebar-item-active: #ffffff;
+  --sl-content-bg: #f7f8fa;
+  --sl-border: rgba(0, 0, 0, 0.08);
+  --sl-border-strong: rgba(0, 0, 0, 0.14);
   --sl-violet: #12b7f5;
-  --sl-pink: #ff5b5b;
-  --sl-yellow: #ffb800;
+  --sl-pink: #fa5151;
+  --sl-yellow: #f5a623;
   --sl-green: #07c160;
   --sl-blue: #12b7f5;
-  --sl-font: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --sl-accent: #12b7f5;
+  --sl-accent-hover: #0ba1de;
+  --sl-accent-tint: rgba(18, 183, 245, 0.12);
+  --sl-btn-bg: rgba(0, 0, 0, 0.05);
+  --sl-btn-bg-hover: rgba(0, 0, 0, 0.09);
+  --sl-btn-bg-active: rgba(0, 0, 0, 0.12);
+  --sl-switch-off: rgba(0, 0, 0, 0.16);
+  --sl-switch-on: #07c160;
+  --sl-segmented-bg: rgba(0, 0, 0, 0.05);
+  --sl-segmented-active: #ffffff;
+  --sl-console-bg: #f4f5f7;
+  --sl-pre-bg: #f4f5f7;
+  --sl-note-bg: rgba(18, 183, 245, 0.08);
+  --sl-danger-bg: rgba(250, 81, 81, 0.1);
+  --sl-warn-bg: rgba(245, 166, 35, 0.12);
+  --sl-ok-bg: rgba(7, 193, 96, 0.12);
+  --sl-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --sl-shadow-md: 0 4px 14px rgba(0, 0, 0, 0.08);
+  --sl-shadow-window: 0 10px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --sl-radius-window: 14px;
+  --sl-radius-card: 14px;
+  --sl-radius-control: 8px;
 }
 
-/* 悬浮球：QQ 蓝圆形按钮 */
+/* 悬浮球：QQ 蓝 */
 .soullink-sphere:where([data-theme='qq']) {
   color: #fff;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(126, 211, 255, 0.92), rgba(64, 178, 255, 0.92));
-  border: none;
-  box-shadow:
-    inset 0 2px 4px rgba(255, 255, 255, 0.35),
-    0 6px 14px rgba(64, 178, 255, 0.35);
-  filter: none;
-  transform: none;
-}
-
-.soullink-sphere:where([data-theme='qq'])::before {
-  display: none;
-}
-
-.soullink-sphere:where([data-theme='qq']) .soullink-sphere__icon {
-  transform: none;
+  background: linear-gradient(180deg, #2ec8ff, #12b7f5);
+  border: 0.5px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 6px 16px rgba(18, 183, 245, 0.4);
 }
 
 .soullink-sphere:where([data-theme='qq']):hover {
-  animation: none;
-  box-shadow:
-    inset 0 2px 4px rgba(255, 255, 255, 0.35),
-    0 8px 18px rgba(64, 178, 255, 0.45);
-  transform: scale(1.05);
+  box-shadow: 0 8px 20px rgba(18, 183, 245, 0.5);
+  transform: translateY(-2px) scale(1.05);
 }
 
 .soullink-sphere:where([data-theme='qq']):active {
   transform: scale(0.94);
 }
 
-.soullink-sphere:where([data-theme='qq']).is-dragging {
-  transform: scale(1.06);
-}
-
-/* 面板：白色圆角卡片 */
+/* 窗口 */
 .soullink-panel:where([data-theme='qq']) .soullink-panel__dialog {
-  border-radius: 12px;
-  background: #fff;
   border: none;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
-  filter: none;
-  transform: none;
+  border-radius: 16px;
+  box-shadow: var(--sl-shadow-window);
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-panel__dialog.is-dragging {
-  transform: none;
+.soullink-panel:where([data-theme='qq']) .soullink-panel__titlebar {
+  background: linear-gradient(180deg, #fbfcfd, #f0f2f5);
 }
 
-/* 标题栏：QQ 蓝渐变 */
-.soullink-panel:where([data-theme='qq']) .soullink-panel__header {
-  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
-  border-bottom: none;
-  border-radius: 12px 12px 0 0;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__header::after {
-  display: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__logo {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.22);
-  border: none;
-  border-radius: 50%;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__title {
-  color: #fff;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__title::after {
-  display: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__close,
-.soullink-panel:where([data-theme='qq']) .soullink-panel__back {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 50%;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__close:hover,
-.soullink-panel:where([data-theme='qq']) .soullink-panel__back:hover {
-  background: rgba(255, 255, 255, 0.35);
-  transform: scale(1.1);
-}
-
-/* 内容区：浅灰底 */
-.soullink-panel:where([data-theme='qq']) .soullink-panel__body {
-  background: #f7f8fa;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__body::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border: none;
-  border-radius: 999px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__badge {
-  border-radius: 999px;
-  border: none;
+/* 窗控：浅蓝圆形按钮，悬停变主题蓝 */
+.soullink-panel:where([data-theme='qq']) .soullink-panel__back,
+.soullink-panel:where([data-theme='qq']) .soullink-panel__close {
   background: rgba(18, 183, 245, 0.1);
-  color: #0a8fd4;
-  transform: none;
+  color: #5d5d62;
 }
 
-/* 区块标题 / 提示条 */
-.soullink-panel:where([data-theme='qq']) .soullink-panel__section-title {
-  background: rgba(18, 183, 245, 0.1);
+.soullink-panel:where([data-theme='qq']) .soullink-panel__back:hover,
+.soullink-panel:where([data-theme='qq']) .soullink-panel__close:hover {
+  background: var(--sl-violet);
+  color: #fff;
+  transform: scale(1.08);
+}
+
+/* 分组卡片：气泡 */
+.soullink-panel:where([data-theme='qq']) .soullink-panel__section {
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-panel__section-head {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* 按钮 */
+.soullink-panel:where([data-theme='qq']) .soullink-btn {
   border: none;
   border-radius: 8px;
-  transform: none;
+  background: rgba(0, 0, 0, 0.05);
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-preset__note,
-.soullink-panel:where([data-theme='qq']) .soullink-register__note,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__note,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__note {
-  background: rgba(18, 183, 245, 0.06);
-  border: none;
-  border-radius: 8px;
-  transform: none;
+.soullink-panel:where([data-theme='qq']) .soullink-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.09);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn--primary {
+  background: linear-gradient(180deg, #2ec8ff, #12b7f5);
+  color: #fff;
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #45d0ff, #0ba1de);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn--ghost {
+  background: transparent;
+  color: var(--sl-accent);
+}
+
+.soullink-panel:where([data-theme='qq']) .soullink-btn--ghost:hover:not(:disabled) {
+  background: var(--sl-accent-tint);
 }
 
 /* 输入框 */
 .soullink-panel:where([data-theme='qq']) .soullink-input {
   border-radius: 8px;
-  background: #f7f8fa;
-  border: 1.5px solid #e5e6eb;
+  background: #f4f5f7;
+  border-color: transparent;
 }
 
 .soullink-panel:where([data-theme='qq']) .soullink-input:focus {
-  border-color: #12b7f5;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(18, 183, 245, 0.15);
-  transform: none;
+  border-color: var(--sl-accent);
 }
 
-/* 主按钮：QQ 蓝 */
-.soullink-panel:where([data-theme='qq']) .soullink-btn {
-  border-radius: 8px;
-  border: none;
-  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
-  box-shadow: none;
-  transform: none;
+/* 下拉框箭头：qq 输入框的 background 简写会清掉基础规则的箭头，此处补回 */
+.soullink-panel:where([data-theme='qq']) select.soullink-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2312b7f5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 L6 7.5 L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px;
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-btn:hover:not(:disabled) {
-  filter: brightness(1.06);
-  transform: none;
-  box-shadow: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-btn:active:not(:disabled) {
-  filter: brightness(0.95);
-  transform: scale(0.98);
-  box-shadow: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-btn:disabled {
-  border-style: none;
-  opacity: 0.5;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-btn--ghost {
-  color: #12b7f5;
-  background: rgba(18, 183, 245, 0.08);
-  border: 1.5px solid rgba(18, 183, 245, 0.4);
-  box-shadow: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-btn--ghost:hover:not(:disabled) {
-  background: rgba(18, 183, 245, 0.14);
-}
-
-/* 首页 */
-.soullink-panel:where([data-theme='qq']) .soullink-home__note {
-  background: rgba(18, 183, 245, 0.08);
-  border: none;
+/* 说明文字：浅蓝气泡 */
+.soullink-panel:where([data-theme='qq']) .soullink-api__hint,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__hint,
+.soullink-panel:where([data-theme='qq']) .soullink-filter__editor-hint,
+.soullink-panel:where([data-theme='qq']) .soullink-preset__note,
+.soullink-panel:where([data-theme='qq']) .soullink-register__note,
+.soullink-panel:where([data-theme='qq']) .soullink-archive__note,
+.soullink-panel:where([data-theme='qq']) .soullink-worldbook__note,
+.soullink-panel:where([data-theme='qq']) .soullink-round__note {
+  padding: 8px 12px;
+  background: #e8f6fd;
   border-radius: 10px;
-  transform: none;
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-home__mini {
-  color: #12b7f5;
-  background: #fff;
-  border: none;
-  border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__mini:hover {
-  background: rgba(18, 183, 245, 0.1);
-  box-shadow: none;
-  transform: scale(1.06);
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card {
-  background: #fff;
+/* 日志控制台 */
+.soullink-panel:where([data-theme='qq']) .soullink-log__console {
   border: none;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  filter: none;
-  transform: none;
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-home__card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+/* 概览 Logo */
+.soullink-panel:where([data-theme='qq']) .soullink-home__logo {
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2ec8ff, #12b7f5);
+  box-shadow: 0 4px 12px rgba(18, 183, 245, 0.35);
 }
 
-.soullink-panel:where([data-theme='qq']) .soullink-home__card:active {
-  transform: scale(0.97);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card-icon {
-  border-radius: 50%;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card--api .soullink-home__card-icon {
-  color: #12b7f5;
-  background: rgba(18, 183, 245, 0.1);
-  border: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card--round .soullink-home__card-icon {
-  color: #ffb800;
-  background: rgba(255, 184, 0, 0.12);
-  border: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card--preset .soullink-home__card-icon {
-  color: #ff5b5b;
-  background: rgba(255, 91, 91, 0.1);
-  border: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card--register .soullink-home__card-icon {
-  color: #07c160;
-  background: rgba(7, 193, 96, 0.1);
-  border: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card--archive .soullink-home__card-icon {
-  color: #12b7f5;
-  background: rgba(18, 183, 245, 0.1);
-  border: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card--worldbook .soullink-home__card-icon {
-  color: #ffb800;
-  background: rgba(255, 184, 0, 0.12);
-  border: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-home__card-status {
-  border-radius: 999px;
-  border: none;
-  background: rgba(18, 183, 245, 0.1);
-  color: #0a8fd4;
-  transform: none;
-}
-
-/* 状态胶囊（idle 态；ok/error 等状态色由原规则继续生效） */
-.soullink-panel:where([data-theme='qq']) .soullink-api__status,
-.soullink-panel:where([data-theme='qq']) .soullink-round__outcome,
-.soullink-panel:where([data-theme='qq']) .soullink-preset__status,
-.soullink-panel:where([data-theme='qq']) .soullink-register__status,
-.soullink-panel:where([data-theme='qq']) .soullink-register__chat,
-.soullink-panel:where([data-theme='qq']) .soullink-register__npc-status,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__count,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__status,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__status,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__chat,
-.soullink-panel:where([data-theme='qq']) .soullink-filter__status,
-.soullink-panel:where([data-theme='qq']) .soullink-filter__valid {
-  border-radius: 999px;
-  border: none;
-  background: rgba(18, 183, 245, 0.1);
-  color: #0a8fd4;
-  transform: none;
-}
-
-/* 角色扮演视图 */
-.soullink-panel:where([data-theme='qq']) .soullink-round__empty,
-.soullink-panel:where([data-theme='qq']) .soullink-round__summary-inner,
-.soullink-panel:where([data-theme='qq']) .soullink-round__character,
-.soullink-panel:where([data-theme='qq']) .soullink-round__inject-text,
-.soullink-panel:where([data-theme='qq']) .soullink-round__gate-text {
-  background: #fff;
-  border: 1.5px solid #e5e6eb;
-  border-radius: 10px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-round__character-head {
-  background: rgba(18, 183, 245, 0.06);
-  border-bottom: 1px solid #e5e6eb;
-  border-radius: 10px 10px 0 0;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-round__stat {
-  background: #f7f8fa;
-  border: none;
-  border-radius: 8px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-round__character-tag {
-  background: rgba(18, 183, 245, 0.08);
-  border: none;
-  border-radius: 999px;
-}
-
-/* 日志系统 */
-.soullink-panel:where([data-theme='qq']) .soullink-log__chip,
-.soullink-panel:where([data-theme='qq']) .soullink-log__action,
-.soullink-panel:where([data-theme='qq']) .soullink-preset__tab {
-  border-radius: 999px;
-  border: 1.5px solid #e5e6eb;
-  background: #fff;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-log__chip.is-active,
-.soullink-panel:where([data-theme='qq']) .soullink-log__action.is-active,
-.soullink-panel:where([data-theme='qq']) .soullink-preset__tab.is-active {
-  color: #fff;
-  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
-  border-color: transparent;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-log__console {
-  background: #1f2329;
-  border: none;
-  border-radius: 10px;
-  box-shadow: none;
-  filter: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-log__back {
-  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
-  border: none;
-  border-radius: 999px;
-  box-shadow: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-log__paused {
-  background: rgba(255, 184, 0, 0.12);
-  border: none;
-}
-
-/* 注册 / 档案 / 世界书 / 过滤：白色圆角条目 */
-.soullink-panel:where([data-theme='qq']) .soullink-register__item,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__card,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__book,
-.soullink-panel:where([data-theme='qq']) .soullink-filter__row {
-  background: #fff;
-  border: 1.5px solid #e5e6eb;
-  border-radius: 10px;
-  box-shadow: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-register__item:hover,
-.soullink-panel:where([data-theme='qq']) .soullink-filter__row:hover {
-  background: #f7f8fa;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__book-head,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__section {
-  border-color: #e5e6eb;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-register__empty,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__empty,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__empty,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__book-empty,
-.soullink-panel:where([data-theme='qq']) .soullink-filter__empty {
-  background: #fff;
-  border: 1.5px dashed #d0d3d9;
-  border-radius: 10px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-register__unregister {
-  background: rgba(255, 91, 91, 0.08);
-  border: 1.5px solid rgba(255, 91, 91, 0.5);
-  border-radius: 999px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-register__unregister:hover {
-  background: rgba(255, 91, 91, 0.16);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-archive__refine,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__analyze {
-  background: linear-gradient(135deg, #12b7f5, #0aa5ff);
-  border: none;
-  box-shadow: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-archive__analyze:hover:not(:disabled) {
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-archive__edit,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__collapse {
-  background: #fff;
-  border: 1.5px solid #e5e6eb;
-  border-radius: 8px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-archive__edit:hover,
-.soullink-panel:where([data-theme='qq']) .soullink-archive__collapse:hover {
-  background: rgba(18, 183, 245, 0.08);
-  border-color: #12b7f5;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__banner {
-  background: rgba(255, 184, 0, 0.1);
-  border: 1.5px solid rgba(255, 184, 0, 0.5);
-  border-radius: 8px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__search {
-  background: #f7f8fa;
-  border: 1.5px solid #e5e6eb;
-  border-radius: 999px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__search:focus {
-  border-color: #12b7f5;
-  box-shadow: 0 0 0 3px rgba(18, 183, 245, 0.15);
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__entry:hover {
-  background: rgba(18, 183, 245, 0.06);
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__entry input[type='checkbox'] {
-  accent-color: #12b7f5;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__badge {
-  border: 1px solid #e5e6eb;
-  background: #f7f8fa;
-}
-
-/* 过滤编辑区 / 开关 */
-.soullink-panel:where([data-theme='qq']) .soullink-filter__editor {
-  background: #f7f8fa;
-  border: 1.5px solid #e5e6eb;
-  border-radius: 10px;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle span {
-  background: #d0d3d9;
-  border: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle span::after {
-  border: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle input:checked + span {
-  background: #12b7f5;
-  border-color: transparent;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-filter__toggle input:checked + span::after {
-  background: #fff;
-}
-
-/* 小图标按钮 */
-.soullink-panel:where([data-theme='qq']) .soullink-icon-btn,
-.soullink-panel:where([data-theme='qq']) .soullink-filter__action,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__collapse {
-  border-radius: 8px;
-  border: 1.5px solid #e5e6eb;
-  background: #fff;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-icon-btn:hover,
-.soullink-panel:where([data-theme='qq']) .soullink-filter__action:hover,
-.soullink-panel:where([data-theme='qq']) .soullink-worldbook__collapse:hover {
-  background: rgba(18, 183, 245, 0.08);
-  border-color: #12b7f5;
-  transform: none;
-}
-
-/* 底部与主题菜单 */
+/* 状态栏 */
 .soullink-panel:where([data-theme='qq']) .soullink-panel__footer {
-  border-top: 1px solid #e5e6eb;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__link {
-  color: #12b7f5;
-  text-decoration: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__link:hover {
-  color: #0a8fd4;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__version-check,
-.soullink-panel:where([data-theme='qq']) .soullink-panel__theme {
-  border: 1.5px solid #e5e6eb;
-  background: #fff;
-  color: #6b7280;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__version-check:hover,
-.soullink-panel:where([data-theme='qq']) .soullink-panel__theme:hover {
-  color: #12b7f5;
-  border-color: #12b7f5;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__theme-menu {
-  background: #fff;
-  border: none;
-  border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__theme-option:hover {
-  background: rgba(18, 183, 245, 0.08);
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-panel__theme-option.is-active {
-  color: #12b7f5;
-}
-
-/* 确认弹层 / 分析失败弹层 */
-.soullink-panel:where([data-theme='qq']) .soullink-confirm,
-.soullink-panel:where([data-theme='qq']) .soullink-archive-error {
-  background: rgba(0, 0, 0, 0.45);
+  background: #f7f8fa;
 }
 
 .soullink-panel:where([data-theme='qq']) .soullink-confirm__card,
 .soullink-panel:where([data-theme='qq']) .soullink-archive-error__card {
-  background: #fff;
   border: none;
-  border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  filter: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-archive-error__hint {
-  background: rgba(255, 91, 91, 0.08);
-  border: 1.5px solid rgba(255, 91, 91, 0.4);
-  border-radius: 8px;
-}
-
-.soullink-panel:where([data-theme='qq']) .soullink-archive-error__content {
-  background: #f7f8fa;
-  border: 1.5px solid #e5e6eb;
-  border-radius: 8px;
+  border-radius: 14px;
+  box-shadow: var(--sl-shadow-window);
 }
 
 /* =========================================================
-   SoulLink · 古风典雅风格（gufeng）
-   宣纸底 + 墨色描边 + 朱砂印章 + 鎏金点缀；去掉手绘抖动 /
-   不规则圆角 / 旋转 / 虚线描边，改用方正的印章式直角圆角。
-   用 :where() 保持与基础规则同等的特异性，ok/error 等
-   [data-state] 状态色仍由各自的原规则继续生效。
+   SoulLink · 古风典雅主题（gufeng）
+   宣纸底 + 墨色描边 + 朱砂印章 + 鎏金点缀；楷体字。
    ========================================================= */
 
 .soullink-sphere:where([data-theme='gufeng']),
 .soullink-panel:where([data-theme='gufeng']) {
-  --sl-ink: #3b332a;
-  --sl-ink-soft: rgba(59, 51, 42, 0.45);
-  --sl-paper: #f7f1e3;
-  --sl-paper-deep: #efe6d2;
-  --sl-violet: #a63a2e;
-  --sl-pink: #c2553f;
-  --sl-yellow: #b8862f;
-  --sl-green: #5f7f5a;
-  --sl-blue: #4f6d7a;
-  --sl-font: "KaiTi", "楷体", "STKaiti", "FangSong", "仿宋", "SimSun", "宋体", serif;
+  --sl-ink: #2b241c;
+  --sl-ink-soft: rgba(43, 36, 28, 0.5);
+  --sl-ink-faint: rgba(43, 36, 28, 0.3);
+  --sl-text-secondary: #7d7061;
+  --sl-text-tertiary: #a3927d;
+  --sl-paper: #faf5e9;
+  --sl-paper-deep: #f3ecdb;
+  --sl-surface: #faf5e9;
+  --sl-surface-muted: #f3ecdb;
+  --sl-window-bg: rgba(250, 245, 233, 0.96);
+  --sl-titlebar-bg: #2b241c;
+  --sl-sidebar-bg: rgba(243, 236, 219, 0.95);
+  --sl-sidebar-item-hover: rgba(176, 58, 46, 0.08);
+  --sl-sidebar-item-active: #fffdf5;
+  --sl-content-bg: rgba(245, 239, 224, 0.95);
+  --sl-border: rgba(43, 36, 28, 0.28);
+  --sl-border-strong: rgba(43, 36, 28, 0.55);
+  --sl-violet: #b03a2e;
+  --sl-pink: #b03a2e;
+  --sl-yellow: #c9a227;
+  --sl-green: #4a6741;
+  --sl-blue: #3a5a78;
+  --sl-accent: #b03a2e;
+  --sl-accent-hover: #962e24;
+  --sl-accent-tint: rgba(176, 58, 46, 0.12);
+  --sl-btn-bg: rgba(43, 36, 28, 0.06);
+  --sl-btn-bg-hover: rgba(43, 36, 28, 0.1);
+  --sl-btn-bg-active: rgba(43, 36, 28, 0.14);
+  --sl-switch-off: rgba(43, 36, 28, 0.22);
+  --sl-switch-on: #b03a2e;
+  --sl-segmented-bg: rgba(43, 36, 28, 0.08);
+  --sl-segmented-active: #fffdf5;
+  --sl-console-bg: #f6f0e1;
+  --sl-pre-bg: #f6f0e1;
+  --sl-note-bg: rgba(201, 162, 39, 0.1);
+  --sl-danger-bg: rgba(176, 58, 46, 0.12);
+  --sl-warn-bg: rgba(201, 162, 39, 0.16);
+  --sl-ok-bg: rgba(74, 103, 65, 0.14);
+  --sl-shadow-sm: 0 1px 2px rgba(43, 36, 28, 0.08);
+  --sl-shadow-md: 0 3px 10px rgba(43, 36, 28, 0.1);
+  --sl-shadow-window: 0 6px 20px rgba(43, 36, 28, 0.2), 0 20px 54px rgba(43, 36, 28, 0.26);
+  --sl-radius-window: 6px;
+  --sl-radius-card: 4px;
+  --sl-radius-control: 4px;
+  --sl-font: "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "SimSun", serif;
 }
 
-/* 悬浮球：朱砂印章 */
+/* 悬浮球：印章 */
 .soullink-sphere:where([data-theme='gufeng']) {
-  width: 40px;
-  height: 40px;
-  color: #c2553f;
+  color: #faf5e9;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0) 46%),
+    var(--sl-violet);
+  border: 1.5px solid rgba(43, 36, 28, 0.5);
   border-radius: 50%;
-  background: rgba(247, 241, 227, 0.9);
-  border: 1.5px solid rgba(194, 85, 63, 0.55);
-  box-shadow:
-    inset 0 0 0 2px rgba(194, 85, 63, 0.12),
-    0 4px 10px rgba(59, 51, 42, 0.18);
-  filter: none;
-  transform: none;
-}
-
-.soullink-sphere:where([data-theme='gufeng'])::before {
-  display: none;
-}
-
-.soullink-sphere:where([data-theme='gufeng']) .soullink-sphere__icon {
-  transform: none;
+  box-shadow: 2px 3px 0 rgba(43, 36, 28, 0.22);
+  transform: rotate(-2deg);
 }
 
 .soullink-sphere:where([data-theme='gufeng']):hover {
-  animation: none;
-  transform: translateY(-2px) scale(1.04);
-  box-shadow:
-    inset 0 0 0 2px rgba(194, 85, 63, 0.12),
-    0 6px 14px rgba(194, 85, 63, 0.3);
+  transform: rotate(0deg) scale(1.06);
+  box-shadow: 3px 4px 0 rgba(43, 36, 28, 0.26);
 }
 
 .soullink-sphere:where([data-theme='gufeng']):active {
@@ -3478,61 +2993,38 @@ button.soullink-archive__status:active {
 }
 
 .soullink-sphere:where([data-theme='gufeng']).is-dragging {
-  transform: scale(1.06);
+  transform: rotate(0deg) scale(1.06);
 }
 
-/* 面板：宣纸卷轴卡 */
+/* 窗口：宣纸 + 墨框 + 鎏金内线 */
 .soullink-panel:where([data-theme='gufeng']) .soullink-panel__dialog {
-  border-radius: 8px;
-  background: #f7f1e3;
-  border: 1.5px solid rgba(59, 51, 42, 0.75);
-  box-shadow: 0 10px 28px rgba(59, 51, 42, 0.28);
-  filter: none;
-  transform: none;
+  border: 1.5px solid var(--sl-ink);
+  border-radius: var(--sl-radius-window);
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(201, 162, 39, 0.08), transparent 55%),
+    var(--sl-window-bg);
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 162, 39, 0.35),
+    var(--sl-shadow-window);
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__dialog.is-dragging {
-  transform: none;
+/* 标题栏：墨色横带 + 鎏金字 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__titlebar {
+  background:
+    linear-gradient(180deg, rgba(201, 162, 39, 0.16), transparent 60%),
+    var(--sl-titlebar-bg);
+  border-bottom: 1px solid rgba(201, 162, 39, 0.5);
 }
 
-/* 标题栏：墨色横批 + 鎏金底边 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__header {
-  background: linear-gradient(180deg, #4b4238, #3b332a);
-  border-bottom: 2px solid #b8862f;
-  border-radius: 8px 8px 0 0;
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__titlebar-title {
+  color: #f5e6c4;
+  font-weight: 700;
+  letter-spacing: 4px;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__header::after {
-  content: '❖';
-  color: #c9a227;
-  font-size: 12px;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__logo {
-  color: #fdf6e3;
-  background: linear-gradient(135deg, #b03a2e, #98332a);
-  border: none;
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1.5px rgba(253, 246, 227, 0.3);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__title {
-  color: #f7f1e3;
-  letter-spacing: 3px;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__title::after {
-  height: 2px;
-  background: linear-gradient(90deg, rgba(201, 162, 39, 0.85), rgba(201, 162, 39, 0.25));
-  border-radius: 1px;
-  opacity: 1;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__close,
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__back {
+/* 窗控：印章按钮（浅描边，悬停朱砂红） */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__back,
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__close {
   color: #f7f1e3;
   background: transparent;
   border: 1.5px solid rgba(247, 241, 227, 0.5);
@@ -3540,510 +3032,237 @@ button.soullink-archive__status:active {
   transform: none;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__close:hover,
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__back:hover {
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__back:hover,
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__close:hover {
   background: #a63a2e;
   border-color: #a63a2e;
   transform: scale(1.08);
 }
 
-/* 内容区：宣纸底 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__body {
-  background: linear-gradient(180deg, #f9f4e8, #f5eedd);
+/* 工具栏 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__toolbar {
+  border-bottom: 1px solid rgba(43, 36, 28, 0.2);
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__body::-webkit-scrollbar-thumb {
-  background: rgba(59, 51, 42, 0.35);
-  border: none;
-  border-radius: 2px;
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__title {
+  letter-spacing: 3px;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__badge {
-  border-radius: 4px;
-  border: 1px solid rgba(166, 58, 46, 0.35);
-  background: rgba(166, 58, 46, 0.08);
-  color: #98332a;
-  transform: none;
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__title::after {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 8px;
+  background: var(--sl-violet);
+  transform: translateY(-3px) rotate(45deg);
 }
 
-/* 区块标题：朱砂竖条 */
+/* 分组卡片：宣纸签 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-panel__section {
+  border: 1px solid rgba(43, 36, 28, 0.3);
+  border-radius: var(--sl-radius-card);
+  background:
+    linear-gradient(135deg, rgba(201, 162, 39, 0.05), transparent 40%),
+    var(--sl-paper);
+}
+
 .soullink-panel:where([data-theme='gufeng']) .soullink-panel__section-title {
-  background: rgba(166, 58, 46, 0.06);
-  border: 1px solid rgba(59, 51, 42, 0.18);
-  border-left: 3px solid #a63a2e;
-  border-radius: 3px;
-  transform: none;
+  letter-spacing: 2px;
 }
 
 .soullink-panel:where([data-theme='gufeng']) .soullink-panel__section-title::before {
-  content: none;
+  content: '❖';
+  margin-right: 7px;
+  color: var(--sl-yellow);
+  font-size: 11px;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-preset__note,
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__note,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__note,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__note {
-  background: rgba(166, 58, 46, 0.05);
-  border: 1px solid rgba(59, 51, 42, 0.15);
-  border-left: 3px solid #b8862f;
-  border-radius: 3px;
-  transform: none;
-}
-
-/* 输入框 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-input {
-  border-radius: 4px;
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.35);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-input:focus {
-  border-color: #a63a2e;
-  background: #fffdf6;
-  box-shadow: 0 0 0 3px rgba(166, 58, 46, 0.12);
-  transform: none;
-}
-
-/* 主按钮：朱砂印章 */
+/* 按钮：印章 */
 .soullink-panel:where([data-theme='gufeng']) .soullink-btn {
+  border: 1.5px solid var(--sl-ink);
   border-radius: 4px;
-  border: 1.5px solid #7c2a21;
-  background: linear-gradient(180deg, #b03a2e, #98332a);
-  box-shadow: 0 2px 4px rgba(59, 51, 42, 0.3);
-  transform: none;
+  background: transparent;
+  letter-spacing: 1px;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.08s ease;
 }
 
 .soullink-panel:where([data-theme='gufeng']) .soullink-btn:hover:not(:disabled) {
-  filter: brightness(1.07);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(59, 51, 42, 0.32);
+  background: var(--sl-btn-bg-hover);
 }
 
 .soullink-panel:where([data-theme='gufeng']) .soullink-btn:active:not(:disabled) {
-  filter: brightness(0.95);
-  transform: scale(0.98);
-  box-shadow: none;
+  transform: scale(0.97);
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-btn:disabled {
-  border-style: solid;
-  opacity: 0.5;
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn--primary {
+  background: var(--sl-violet);
+  border-color: var(--sl-violet);
+  color: #faf5e9;
+}
+
+.soullink-panel:where([data-theme='gufeng']) .soullink-btn--primary:hover:not(:disabled) {
+  background: var(--sl-accent-hover);
 }
 
 .soullink-panel:where([data-theme='gufeng']) .soullink-btn--ghost {
-  color: #98332a;
-  background: rgba(166, 58, 46, 0.06);
-  border: 1.5px solid rgba(166, 58, 46, 0.45);
-  box-shadow: none;
+  border-color: transparent;
+  color: var(--sl-violet);
 }
 
 .soullink-panel:where([data-theme='gufeng']) .soullink-btn--ghost:hover:not(:disabled) {
-  background: rgba(166, 58, 46, 0.12);
+  background: var(--sl-accent-tint);
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-confirm__cancel.soullink-btn {
-  color: #3b332a;
-  background: #efe6d2;
-  border-color: rgba(59, 51, 42, 0.5);
-  box-shadow: none;
-}
-
-/* 首页 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__note {
-  background: rgba(166, 58, 46, 0.06);
-  border: 1px solid rgba(59, 51, 42, 0.15);
-  border-left: 3px solid #b8862f;
-  border-radius: 4px;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__mini {
-  color: #98332a;
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.3);
-  border-radius: 4px;
-  box-shadow: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__mini:hover {
-  background: rgba(166, 58, 46, 0.08);
-  border-color: #a63a2e;
-  box-shadow: none;
-  transform: scale(1.06);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.55);
-  border-radius: 6px;
-  box-shadow: 0 3px 8px rgba(59, 51, 42, 0.12);
-  filter: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card:hover {
-  transform: translateY(-2px);
-  border-color: #a63a2e;
-  box-shadow: 0 6px 14px rgba(59, 51, 42, 0.16);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card:active {
-  transform: scale(0.97);
-  box-shadow: 0 2px 6px rgba(59, 51, 42, 0.12);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card-icon {
-  border-radius: 5px;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--api .soullink-home__card-icon {
-  color: #98332a;
-  background: rgba(166, 58, 46, 0.08);
-  border: 1px solid rgba(166, 58, 46, 0.45);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--round .soullink-home__card-icon {
-  color: #b8862f;
-  background: rgba(184, 134, 47, 0.1);
-  border: 1px solid rgba(184, 134, 47, 0.45);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--preset .soullink-home__card-icon {
-  color: #c2553f;
-  background: rgba(194, 85, 63, 0.1);
-  border: 1px solid rgba(194, 85, 63, 0.45);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--register .soullink-home__card-icon {
-  color: #5f7f5a;
-  background: rgba(95, 127, 90, 0.1);
-  border: 1px solid rgba(95, 127, 90, 0.45);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--archive .soullink-home__card-icon {
-  color: #4f6d7a;
-  background: rgba(79, 109, 122, 0.1);
-  border: 1px solid rgba(79, 109, 122, 0.45);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card--worldbook .soullink-home__card-icon {
-  color: #b8862f;
-  background: rgba(184, 134, 47, 0.1);
-  border: 1px solid rgba(184, 134, 47, 0.45);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-home__card-status {
-  border-radius: 3px;
-  border: 1px solid rgba(59, 51, 42, 0.25);
-  background: rgba(59, 51, 42, 0.06);
-  color: #6b5b4b;
-  transform: none;
-}
-
-/* 状态胶囊（idle 态；ok/error 等状态色由原规则继续生效） */
-.soullink-panel:where([data-theme='gufeng']) .soullink-api__status,
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__outcome,
-.soullink-panel:where([data-theme='gufeng']) .soullink-preset__status,
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__status,
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__chat,
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__npc-status,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__count,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__status,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__status,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__chat,
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__status,
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__valid {
-  border-radius: 3px;
-  border: 1px solid rgba(59, 51, 42, 0.2);
-  background: rgba(59, 51, 42, 0.06);
-  color: #6b5b4b;
-  transform: none;
-}
-
-/* 角色扮演视图 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__empty,
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__summary-inner,
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__character,
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__inject-text,
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__gate-text {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.25);
-  border-radius: 6px;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__character-head {
-  background: rgba(166, 58, 46, 0.05);
-  border-bottom: 1px solid rgba(59, 51, 42, 0.2);
-  border-radius: 6px 6px 0 0;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__stat {
-  background: rgba(59, 51, 42, 0.05);
+/* 输入框：下划线式 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-input {
   border: none;
-  border-radius: 4px;
+  border-bottom: 1.5px solid rgba(43, 36, 28, 0.4);
+  border-radius: 0;
+  background: transparent;
+  padding-left: 2px;
+  padding-right: 2px;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-round__character-tag {
-  background: rgba(166, 58, 46, 0.07);
-  border: 1px solid rgba(166, 58, 46, 0.3);
-  border-radius: 3px;
+.soullink-panel:where([data-theme='gufeng']) .soullink-input:focus {
+  border-bottom-color: var(--sl-violet);
+  box-shadow: 0 2px 0 -1px rgba(176, 58, 46, 0.25);
 }
 
-/* 日志系统 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-log__chip,
-.soullink-panel:where([data-theme='gufeng']) .soullink-log__action,
-.soullink-panel:where([data-theme='gufeng']) .soullink-preset__tab {
-  border-radius: 4px;
-  border: 1.5px solid rgba(59, 51, 42, 0.25);
-  background: #fbf7ec;
-  transform: none;
+/* 下拉框箭头：background 简写已重置 repeat/position/size，需逐项补回，否则 SVG 平铺成折线 */
+.soullink-panel:where([data-theme='gufeng']) select.soullink-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%237d7061' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 L6 7.5 L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px;
+  padding-right: 26px;
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-log__chip.is-active,
-.soullink-panel:where([data-theme='gufeng']) .soullink-log__action.is-active,
-.soullink-panel:where([data-theme='gufeng']) .soullink-preset__tab.is-active {
-  color: #f7f1e3;
-  background: linear-gradient(180deg, #4b4238, #3b332a);
-  border-color: #3b332a;
+/* 说明文字：注疏 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-api__hint,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__hint,
+.soullink-panel:where([data-theme='gufeng']) .soullink-filter__editor-hint,
+.soullink-panel:where([data-theme='gufeng']) .soullink-preset__note,
+.soullink-panel:where([data-theme='gufeng']) .soullink-register__note,
+.soullink-panel:where([data-theme='gufeng']) .soullink-archive__note,
+.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__note,
+.soullink-panel:where([data-theme='gufeng']) .soullink-round__note {
+  padding-left: 10px;
+  border-left: 2px solid var(--sl-yellow);
 }
 
+/* 日志控制台 */
 .soullink-panel:where([data-theme='gufeng']) .soullink-log__console {
-  background: #2b2722;
-  border: 1px solid rgba(59, 51, 42, 0.8);
-  border-radius: 6px;
-  box-shadow: none;
-  filter: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-log__back {
-  background: linear-gradient(180deg, #b03a2e, #98332a);
-  border: 1.5px solid #7c2a21;
+  border: 1px solid rgba(43, 36, 28, 0.3);
   border-radius: 4px;
-  box-shadow: none;
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(201, 162, 39, 0.05), transparent 50%),
+    var(--sl-console-bg);
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-log__paused {
-  background: rgba(184, 134, 47, 0.14);
-  border: 1px solid rgba(184, 134, 47, 0.4);
-}
-
-/* 注册 / 档案 / 世界书 / 过滤：宣纸条目 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__item,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__card,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__book,
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__row {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.25);
-  border-radius: 6px;
-  box-shadow: none;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__item:hover,
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__row:hover {
-  background: rgba(166, 58, 46, 0.04);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__book-head,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__section {
-  border-color: rgba(59, 51, 42, 0.25);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__empty,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__empty,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__empty,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__book-empty,
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__empty {
-  background: #fbf7ec;
-  border: 1.5px dashed rgba(59, 51, 42, 0.3);
-  border-radius: 6px;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__unregister {
-  background: rgba(166, 58, 46, 0.07);
-  border: 1.5px solid rgba(166, 58, 46, 0.5);
+/* 概览 Logo：朱砂印章 */
+.soullink-panel:where([data-theme='gufeng']) .soullink-home__logo {
+  background: var(--sl-violet);
+  border: 1.5px solid var(--sl-ink);
   border-radius: 4px;
+  box-shadow: 2px 2px 0 rgba(43, 36, 28, 0.2);
+  transform: rotate(-2deg);
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-register__unregister:hover {
-  background: rgba(166, 58, 46, 0.14);
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__refine,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__analyze {
-  background: linear-gradient(180deg, #b03a2e, #98332a);
-  border: 1.5px solid #7c2a21;
-  box-shadow: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__analyze:hover:not(:disabled) {
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__collapse {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.3);
-  border-radius: 4px;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__edit:hover,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive__collapse:hover {
-  background: rgba(166, 58, 46, 0.07);
-  border-color: #a63a2e;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__banner {
-  background: rgba(184, 134, 47, 0.1);
-  border: 1.5px solid rgba(184, 134, 47, 0.5);
-  border-radius: 4px;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__search {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.3);
-  border-radius: 4px;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__search:focus {
-  border-color: #a63a2e;
-  box-shadow: 0 0 0 3px rgba(166, 58, 46, 0.12);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__entry:hover {
-  background: rgba(166, 58, 46, 0.04);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__entry input[type='checkbox'] {
-  accent-color: #a63a2e;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__badge {
-  border: 1px solid rgba(59, 51, 42, 0.25);
-  background: #fbf7ec;
-}
-
-/* 过滤编辑区 / 开关 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__editor {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.25);
-  border-radius: 6px;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle span {
-  background: rgba(59, 51, 42, 0.3);
-  border: 1px solid rgba(59, 51, 42, 0.3);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle span::after {
-  border: 1px solid rgba(59, 51, 42, 0.35);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle input:checked + span {
-  background: #a63a2e;
-  border-color: #7c2a21;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__toggle input:checked + span::after {
-  background: #f7f1e3;
-}
-
-/* 小图标按钮 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-icon-btn,
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__action,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__collapse {
-  border-radius: 4px;
-  border: 1.5px solid rgba(59, 51, 42, 0.3);
-  background: #fbf7ec;
-  transform: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-icon-btn:hover,
-.soullink-panel:where([data-theme='gufeng']) .soullink-filter__action:hover,
-.soullink-panel:where([data-theme='gufeng']) .soullink-worldbook__collapse:hover {
-  background: rgba(166, 58, 46, 0.07);
-  border-color: #a63a2e;
-  transform: none;
-}
-
-/* 底部与主题菜单 */
+/* 状态栏 */
 .soullink-panel:where([data-theme='gufeng']) .soullink-panel__footer {
-  border-top: 1px solid rgba(59, 51, 42, 0.2);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__link {
-  color: #98332a;
-  text-decoration: none;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__link:hover {
-  color: #7c2a21;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__version-check,
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme {
-  border: 1.5px solid rgba(59, 51, 42, 0.3);
-  background: #fbf7ec;
-  color: #6b5b4b;
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__version-check:hover,
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme:hover {
-  color: #98332a;
-  border-color: #a63a2e;
+  border-top: 1px solid rgba(43, 36, 28, 0.25);
 }
 
 .soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme-menu {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.3);
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(59, 51, 42, 0.2);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme-option:hover {
-  background: rgba(166, 58, 46, 0.07);
-}
-
-.soullink-panel:where([data-theme='gufeng']) .soullink-panel__theme-option.is-active {
-  color: #98332a;
-}
-
-/* 确认弹层 / 分析失败弹层 */
-.soullink-panel:where([data-theme='gufeng']) .soullink-confirm,
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive-error {
-  background: rgba(59, 51, 42, 0.45);
+  border: 1px solid var(--sl-ink);
+  border-radius: 4px;
 }
 
 .soullink-panel:where([data-theme='gufeng']) .soullink-confirm__card,
 .soullink-panel:where([data-theme='gufeng']) .soullink-archive-error__card {
-  background: #f7f1e3;
-  border: 1.5px solid rgba(59, 51, 42, 0.7);
-  border-radius: 8px;
-  box-shadow: 0 10px 28px rgba(59, 51, 42, 0.3);
-  filter: none;
-  transform: none;
+  border: 1.5px solid var(--sl-ink);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 162, 39, 0.35),
+    var(--sl-shadow-window);
 }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive-error__hint {
-  background: rgba(166, 58, 46, 0.07);
-  border: 1.5px solid rgba(166, 58, 46, 0.4);
-  border-radius: 4px;
-}
+/* =========================================================
+   小屏适配（手机 / 窄窗口）
+   面板近全屏 + 压缩纵向空间 + 操作行自动换行。
+   ========================================================= */
+@media (max-width: 640px) {
+  /* 窗口占满屏幕：覆盖 JS 记忆的 left/top 内联位置 */
+  .soullink-panel__dialog {
+    left: 0 !important;
+    top: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+  }
 
-.soullink-panel:where([data-theme='gufeng']) .soullink-archive-error__content {
-  background: #fbf7ec;
-  border: 1.5px solid rgba(59, 51, 42, 0.25);
-  border-radius: 4px;
+  /* 纵向空间压缩 */
+  .soullink-panel__titlebar {
+    height: 40px;
+    padding: 0 10px;
+  }
+  .soullink-panel__toolbar {
+    height: 40px;
+    padding: 0 14px;
+  }
+  .soullink-panel__title {
+    font-size: 17px;
+  }
+  .soullink-panel__footer {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .soullink-panel__body {
+    padding: 12px 12px 16px;
+  }
+
+  /* 概览页紧凑 */
+  .soullink-home__hero {
+    padding: 14px 14px 10px;
+  }
+  .soullink-home__hello {
+    font-size: 22px;
+  }
+  .soullink-panel__section {
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .soullink-home__row {
+    min-height: 40px;
+  }
+
+  /* 操作行 / 筛选行换行，避免横向溢出 */
+  .soullink-api__key-row,
+  .soullink-log__tools,
+  .soullink-filter__editor-actions,
+  .soullink-filter__actions,
+  .soullink-preset__actions,
+  .soullink-archive__card-actions,
+  .soullink-round__note {
+    flex-wrap: wrap;
+  }
+  .soullink-api__key-row .soullink-input {
+    min-width: 0;
+  }
+  .soullink-log__source,
+  .soullink-log__max {
+    width: 108px;
+  }
+
+  /* 弹层贴底，减少遮挡 */
+  .soullink-confirm__card,
+  .soullink-archive-error__card {
+    width: min(320px, calc(100vw - 40px));
+  }
 }

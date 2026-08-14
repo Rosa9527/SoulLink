@@ -285,8 +285,6 @@ function renderRegisterList() {
   const names = Object.keys(roster || {}).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
   const status = document.getElementById(REGISTER_STATUS_ID);
   if (status) status.textContent = `${names.length} 个角色`;
-  const chatNode = document.getElementById(REGISTER_CHAT_ID);
-  if (chatNode) chatNode.textContent = `绑定聊天：${getCurrentChatLabel(ctx)}`;
   list.textContent = '';
   if (names.length === 0) {
     const empty = document.createElement('div');

@@ -79,8 +79,8 @@ function renderApiConcurrencyControl() {
   if (!settings) return;
   const enabled = settings.apiConcurrencyEnabled !== false;
   if (toggle) {
-    toggle.textContent = enabled ? '🔀 并发限制：开' : '🔀 并发限制：关';
-    toggle.classList.toggle('is-active', enabled);
+    toggle.classList.toggle('is-on', enabled);
+    toggle.setAttribute('aria-checked', String(enabled));
     toggle.title = enabled ? '点击关闭并发限制' : '点击开启并发限制';
   }
   if (input) {

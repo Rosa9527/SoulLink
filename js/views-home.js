@@ -71,8 +71,9 @@ function renderNpcDeductionToggle() {
     status.dataset.state = enabled ? 'ok' : 'idle';
   }
   if (toggle) {
-    toggle.textContent = `🎭 前置推演：${enabled ? '开' : '关'}`;
-    toggle.classList.toggle('is-active', enabled);
+    toggle.classList.toggle('is-on', enabled);
+    toggle.setAttribute('aria-checked', String(enabled));
+    toggle.title = enabled ? '点击关闭发送前角色推演' : '点击开启发送前角色推演';
   }
 }
 

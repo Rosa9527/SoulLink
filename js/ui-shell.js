@@ -244,10 +244,11 @@ function initDraggablePanel(panel) {
   handles.forEach((handle) =>
     handle.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
-      // 指针落在标题栏内的按钮上（返回/关闭）时，不启动拖拽、不捕获指针，
-      // 否则 setPointerCapture 会把后续 click 重定向到标题栏，按钮点击失效。
+      // 指针落在标题栏内的按钮/表单控件上（红绿灯、搜索框）时，不启动拖拽、不捕获指针，
+      // 否则 setPointerCapture 会把后续 click 重定向到标题栏，控件点击失效。
       const target = event.target;
-      if (target instanceof Element && typeof target.closest === 'function' && target.closest('button')) return;
+      if (target instanceof Element && typeof target.closest === 'function'
+        && target.closest('button, input, select, textarea')) return;
       dragState = {
         offsetX: event.clientX - dialog.offsetLeft,
         offsetY: event.clientY - dialog.offsetTop,
@@ -351,8 +352,9 @@ function showConfirm(message) {
 
 // ---------- 总前端：视图切换 ----------
 const PANEL_VIEW_TITLES = Object.freeze({
-  [HOME_VIEW_ID]: MODULE_NAME,
+  [HOME_VIEW_ID]: '概览',
   [API_VIEW_ID]: 'API 连接',
+  [FILTER_VIEW_ID]: '正则过滤',
   [LOG_VIEW_ID]: '日志系统',
   [PRESET_VIEW_ID]: '预设',
   [REGISTER_VIEW_ID]: '角色注册',
@@ -408,23 +410,28 @@ function showPanelView(viewId) {
     renderRoundView();
     logApp('debug', '打开角色扮演视图');
   }
-  const back = document.getElementById(PANEL_BACK_ID);
-  if (back) back.style.visibility = viewId === HOME_VIEW_ID ? 'hidden' : 'visible';
   const title = document.getElementById(PANEL_TITLE_ID);
   if (title) title.textContent = PANEL_VIEW_TITLES[viewId] || MODULE_NAME;
+  // 概览页自身无需返回按钮
+  const back = document.getElementById(PANEL_BACK_ID);
+  if (back) back.hidden = viewId === HOME_VIEW_ID;
   ensurePanelPosition(panel);
 }
 
+// 红绿灯「缩放」按钮已随窗控改版移除；宽模式仍由 showPanelView 按视图自动切换。
+
+// 概览功能行与其余视图都通过 data-view 切换视图。
 function initPanelViews(panel) {
   if (!panel || panel.dataset.viewsReady === 'true') return;
-  document.getElementById(PANEL_BACK_ID)?.addEventListener('click', () => showPanelView(HOME_VIEW_ID));
-  document.getElementById(HOME_API_CARD_ID)?.addEventListener('click', () => showPanelView(API_VIEW_ID));
-  document.getElementById(HOME_LOG_ICON_ID)?.addEventListener('click', () => showPanelView(LOG_VIEW_ID));
-  document.getElementById(HOME_PRESET_CARD_ID)?.addEventListener('click', () => showPanelView(PRESET_VIEW_ID));
-  document.getElementById(HOME_REGISTER_CARD_ID)?.addEventListener('click', () => showPanelView(REGISTER_VIEW_ID));
-  document.getElementById(HOME_ARCHIVE_CARD_ID)?.addEventListener('click', () => showPanelView(ARCHIVE_VIEW_ID));
-  document.getElementById(HOME_WORLDBOOK_CARD_ID)?.addEventListener('click', () => showPanelView(WORLDBOOK_VIEW_ID));
-  document.getElementById(HOME_ROUND_CARD_ID)?.addEventListener('click', () => showPanelView(ROUND_VIEW_ID));
+  panel.querySelectorAll('[data-view]').forEach((node) => {
+    node.addEventListener('click', () => {
+      const viewId = node.dataset.view;
+      if (viewId) showPanelView(viewId);
+    });
+  });
+  // 标题栏窗控：左上返回概览（概览页自身隐藏），右上关闭面板。
+  panel.querySelector('#' + PANEL_BACK_ID)?.addEventListener('click', () => showPanelView(HOME_VIEW_ID));
+  panel.querySelector('.soullink-panel__close')?.addEventListener('click', closePanel);
   document.getElementById(ROUND_COPY_ID)?.addEventListener('click', copyRoundInjectionText);
   panel.dataset.viewsReady = 'true';
 }
@@ -632,275 +639,355 @@ function createPanel() {
   panel.setAttribute('aria-hidden', 'true');
   panel.innerHTML = `
     <div class="soullink-panel__dialog" role="dialog" aria-label="${MODULE_NAME}">
-      <div class="soullink-panel__header soullink-drag-handle">
-        <button type="button" id="${PANEL_BACK_ID}" class="soullink-panel__back" aria-label="返回" title="返回" style="visibility:hidden">←</button>
-        <span class="${MENU_ICON_CLASS} soullink-panel__logo"></span>
-        <span id="${PANEL_TITLE_ID}" class="soullink-panel__title">${MODULE_NAME}</span>
-        <button type="button" class="soullink-panel__close" aria-label="关闭" title="关闭">✕</button>
+      <div class="soullink-panel__titlebar soullink-drag-handle">
+        <button type="button" id="${PANEL_BACK_ID}" class="soullink-panel__back" aria-label="返回概览" title="返回概览" hidden><span aria-hidden="true">←</span></button>
+        <span class="soullink-panel__titlebar-title">${MODULE_NAME}</span>
+        <button type="button" class="soullink-panel__close" aria-label="关闭面板" title="关闭面板"><span aria-hidden="true">✕</span></button>
       </div>
-      <div class="soullink-panel__body">
-        <section id="${HOME_VIEW_ID}" class="soullink-view is-active" aria-hidden="false">
-          <div class="soullink-home__note">
-            <div class="soullink-home__note-text">
-              <p class="soullink-home__hello">嘿，欢迎回来！</p>
-              <p class="soullink-home__sub">想从哪里开始？</p>
-            </div>
-            <button type="button" id="${HOME_LOG_ICON_ID}" class="soullink-home__mini" title="打开后台日志系统">
-              <span class="${LOG_ICON_CLASS}"></span>
-            </button>
-          </div>
-          <div class="soullink-home__grid">
-            <button type="button" id="${HOME_API_CARD_ID}" class="soullink-home__card soullink-home__card--api" title="打开 API 连接设置">
-              <span class="soullink-home__card-icon"><span class="${MENU_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">API 连接</span>
-              <span id="${HOME_API_STATUS_ID}" class="soullink-home__card-status" data-state="idle">尚未连接</span>
-            </button>
-            <button type="button" id="${HOME_ROUND_CARD_ID}" class="soullink-home__card soullink-home__card--round" title="查看上一轮角色扮演的结果">
-              <span class="soullink-home__card-icon">
-                <span class="${ROUND_ICON_CLASS}"></span>
-                <span id="${HOME_ROUND_BADGE_ID}" class="soullink-home__card-badge" data-state="idle" hidden></span>
-              </span>
-              <span class="soullink-home__card-title">角色扮演</span>
-              <span id="${HOME_ROUND_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无记录</span>
-            </button>
-            <button type="button" id="${HOME_PRESET_CARD_ID}" class="soullink-home__card soullink-home__card--preset" title="打开预设管理">
-              <span class="soullink-home__card-icon"><span class="${PRESET_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">预设</span>
-              <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__card-status" data-state="idle">默认配置</span>
-            </button>
-            <button type="button" id="${HOME_REGISTER_CARD_ID}" class="soullink-home__card soullink-home__card--register" title="打开角色注册管理">
-              <span class="soullink-home__card-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">角色注册</span>
-              <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无角色</span>
-            </button>
-            <button type="button" id="${HOME_ARCHIVE_CARD_ID}" class="soullink-home__card soullink-home__card--archive" title="打开档案系统">
-              <span class="soullink-home__card-icon"><span class="${ARCHIVE_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">档案系统</span>
-              <span id="${HOME_ARCHIVE_STATUS_ID}" class="soullink-home__card-status" data-state="idle">暂无档案</span>
-            </button>
-            <button type="button" id="${HOME_WORLDBOOK_CARD_ID}" class="soullink-home__card soullink-home__card--worldbook" title="打开世界书（触发规则跟随 SillyTavern）">
-              <span class="soullink-home__card-icon"><span class="${WORLDBOOK_ICON_CLASS}"></span></span>
-              <span class="soullink-home__card-title">世界书</span>
-              <span id="${HOME_WORLDBOOK_STATUS_ID}" class="soullink-home__card-status" data-state="idle">跟随酒馆规则</span>
-            </button>
-          </div>
-        </section>
-        <section id="${API_VIEW_ID}" class="soullink-view" aria-hidden="true">
-          <div class="soullink-panel__section">
-            <div class="soullink-panel__section-head">
-              <span class="soullink-panel__section-title">API 连接</span>
-              <span id="soullink-api-status" class="soullink-api__status" data-state="idle">尚未连接</span>
-            </div>
-            <label class="soullink-api__field" for="soullink-api-url">
-              <span class="soullink-api__label">Base URL</span>
-              <input id="soullink-api-url" class="soullink-input" type="text" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" />
-            </label>
-            <label class="soullink-api__field" for="soullink-api-key">
-              <span class="soullink-api__label">API Key</span>
-              <span class="soullink-api__key-row">
-                <input id="soullink-api-key" class="soullink-input" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
-                <button type="button" id="soullink-api-key-toggle" class="soullink-icon-btn" title="显示密钥" aria-label="显示密钥">👁</button>
-              </span>
-            </label>
-            <div class="soullink-api__actions">
-              <button type="button" id="soullink-api-connect" class="soullink-btn soullink-btn--primary">连接并拉取模型</button>
-            </div>
-            <div class="soullink-api__field">
-              <span class="soullink-api__label">模型</span>
-              <select id="soullink-api-model-list" class="soullink-input">
-                <option value="">请先连接并拉取模型</option>
-              </select>
-              <input id="soullink-api-model" class="soullink-input" type="text" placeholder="或手动填写模型名称" autocomplete="off" spellcheck="false" />
-            </div>
-            <div class="soullink-api__field">
-              <span class="soullink-api__label">限制并发</span>
-              <div class="soullink-api__concurrency-row">
-                <button type="button" id="${API_CONCURRENCY_TOGGLE_ID}" class="soullink-btn soullink-api__concurrency-toggle" title="开启/关闭并发限制">🔀 并发限制：开</button>
-                <input id="${API_CONCURRENCY_INPUT_ID}" class="soullink-input soullink-api__concurrency-input" type="number" min="1" max="10" step="1" placeholder="3" autocomplete="off" aria-label="并发上限" />
+      <div class="soullink-panel__toolbar">
+        <span id="${PANEL_TITLE_ID}" class="soullink-panel__title">概览</span>
+      </div>
+      <div class="soullink-panel__main">
+        <div class="soullink-panel__body">
+          <section id="${HOME_VIEW_ID}" class="soullink-view is-active" aria-hidden="false">
+            <div class="soullink-home">
+              <div class="soullink-home__hero">
+                <span class="soullink-home__logo"><span class="${MENU_ICON_CLASS}"></span></span>
+                <div class="soullink-home__hero-text">
+                  <p class="soullink-home__hello">${MODULE_NAME}</p>
+                </div>
               </div>
-              <p class="soullink-api__hint">同时最多发送的 AI 请求数（默认 3）；多出的请求会排队等待前面的请求完成后再发送。</p>
-            </div>
-            <div class="soullink-api__field">
-              <span class="soullink-api__label">思考强度</span>
-              <select id="${API_REASONING_EFFORT_ID}" class="soullink-input" title="控制带思考能力模型的思考强度（reasoning_effort）">
-                <option value="">默认（不发送）</option>
-                <option value="none">关闭思考</option>
-                <option value="low">低</option>
-                <option value="medium">中</option>
-                <option value="high">高</option>
-                <option value="max">最大</option>
-              </select>
-              <p class="soullink-api__hint">仅对带思考能力的模型生效；「关闭思考」可避免模型把输出预算花在思考上导致正文为空（如精编失败），「最大」思考最充分但更慢更贵。</p>
-            </div>
-            <p class="soullink-api__hint">填入接口地址与 API Key 后点「连接并拉取模型」，再从列表选择模型；不支持模型列表的渠道可直接手动填写模型名称。</p>
-          </div>
-          <div class="soullink-panel__section soullink-filter">
-            <div class="soullink-panel__section-head">
-              <span class="soullink-panel__section-title">正则过滤</span>
-              <span id="${FILTER_STATUS_ID}" class="soullink-filter__status" data-state="idle">读取中…</span>
-            </div>
-            <p class="soullink-filter__hint">档案分析、档案预筛、角色扮演预筛、角色推演这四种调用都会把最近的几条消息作为上下文；启用正则后，每条消息内容中匹配的部分会被剔除，整条内容都被匹配的消息不再进入上下文。</p>
-            <div class="soullink-filter__toolbar">
-              <button type="button" id="${FILTER_ADD_ID}" class="soullink-btn soullink-btn--ghost">＋ 新建</button>
-              <button type="button" id="${FILTER_IMPORT_ID}" class="soullink-btn soullink-btn--ghost">📥 导入</button>
-              <input id="${FILTER_IMPORT_FILE_ID}" type="file" accept=".json,application/json" hidden />
-              <button type="button" id="${FILTER_EXPORT_ID}" class="soullink-btn soullink-btn--ghost">📤 导出</button>
-            </div>
-            <div id="${FILTER_EDITOR_ID}" class="soullink-filter__editor" hidden>
-              <div class="soullink-filter__editor-meta">
-                <span class="soullink-filter__editor-title">编辑正则</span>
-                <span id="${FILTER_EDITOR_VALID_ID}" class="soullink-filter__valid" data-state="idle"></span>
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">功能一览</span>
+                </div>
+                <div class="soullink-home__rows">
+                  <button type="button" class="soullink-home__row" data-view="${API_VIEW_ID}" title="打开 API 连接设置">
+                    <span class="soullink-home__row-icon"><span class="${MENU_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">API 连接</span>
+                    <span id="${HOME_API_STATUS_ID}" class="soullink-home__row-status" data-state="idle">尚未连接</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${FILTER_VIEW_ID}" title="打开正则过滤设置">
+                    <span class="soullink-home__row-icon"><span class="${FILTER_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">正则过滤</span>
+                    <span id="${HOME_FILTER_STATUS_ID}" class="soullink-home__row-status" data-state="idle">未启用</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${REGISTER_VIEW_ID}" title="打开角色注册管理">
+                    <span class="soullink-home__row-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">角色注册</span>
+                    <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无角色</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${ARCHIVE_VIEW_ID}" title="打开档案系统">
+                    <span class="soullink-home__row-icon"><span class="${ARCHIVE_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">档案系统</span>
+                    <span id="${HOME_ARCHIVE_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无档案</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${WORLDBOOK_VIEW_ID}" title="打开世界书（触发规则跟随 SillyTavern）">
+                    <span class="soullink-home__row-icon"><span class="${WORLDBOOK_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">世界书</span>
+                    <span id="${HOME_WORLDBOOK_STATUS_ID}" class="soullink-home__row-status" data-state="idle">跟随酒馆规则</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" id="${HOME_ROUND_CARD_ID}" class="soullink-home__row" data-view="${ROUND_VIEW_ID}" title="查看上一轮角色扮演的结果">
+                    <span class="soullink-home__row-icon"><span class="${ROUND_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">角色扮演</span>
+                    <span id="${HOME_ROUND_BADGE_ID}" class="soullink-home__row-badge" data-state="idle" hidden></span>
+                    <span id="${HOME_ROUND_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无记录</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${LOG_VIEW_ID}" title="打开后台日志系统">
+                    <span class="soullink-home__row-icon"><span class="${LOG_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">日志系统</span>
+                    <span class="soullink-home__row-status" data-state="idle">实时控制台</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${PRESET_VIEW_ID}" title="打开预设管理">
+                    <span class="soullink-home__row-icon"><span class="${PRESET_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">预设</span>
+                    <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__row-status" data-state="idle">默认配置</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                </div>
               </div>
-              <label class="soullink-filter__field" for="${FILTER_EDITOR_NAME_ID}">
-                <span class="soullink-filter__label">名称</span>
-                <input id="${FILTER_EDITOR_NAME_ID}" class="soullink-input" type="text" placeholder="例如：智绘姬" autocomplete="off" spellcheck="false" />
+            </div>
+          </section>
+          <section id="${API_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-panel__section">
+              <div class="soullink-panel__section-head">
+                <span class="soullink-panel__section-title">连接设置</span>
+                <span id="${API_STATUS_ID}" class="soullink-api__status" data-state="idle">尚未连接</span>
+              </div>
+              <label class="soullink-api__field" for="${API_URL_ID}">
+                <span class="soullink-api__label">Base URL</span>
+                <input id="${API_URL_ID}" class="soullink-input" type="text" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" />
               </label>
-              <label class="soullink-filter__field" for="${FILTER_EDITOR_REGEX_ID}">
-                <span class="soullink-filter__label">表达式</span>
-                <input id="${FILTER_EDITOR_REGEX_ID}" class="soullink-input soullink-filter__regex-input" type="text" placeholder="/<image>[\s\S]*?<\/image>/g" autocomplete="off" spellcheck="false" />
+              <label class="soullink-api__field" for="${API_KEY_ID}">
+                <span class="soullink-api__label">API Key</span>
+                <span class="soullink-api__key-row">
+                  <input id="${API_KEY_ID}" class="soullink-input" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+                  <button type="button" id="${API_KEY_TOGGLE_ID}" class="soullink-icon-btn" title="显示密钥" aria-label="显示密钥">👁</button>
+                </span>
               </label>
-              <p class="soullink-filter__editor-hint">支持完整字面量（/表达式/标记，如 /<image>[\s\S]*?<\/image>/g）或纯表达式两种写法；保存时校验正则能否编译。</p>
-              <div class="soullink-filter__editor-actions">
-                <button type="button" id="${FILTER_EDITOR_CANCEL_ID}" class="soullink-btn soullink-btn--ghost">取消</button>
-                <button type="button" id="${FILTER_EDITOR_SAVE_ID}" class="soullink-btn soullink-btn--primary" disabled>💾 保存</button>
+              <div class="soullink-api__actions">
+                <button type="button" id="${API_CONNECT_ID}" class="soullink-btn soullink-btn--primary">连接并拉取模型</button>
               </div>
             </div>
-            <div id="${FILTER_LIST_ID}" class="soullink-filter__list"></div>
-          </div>
-        </section>
-        <section id="${LOG_VIEW_ID}" class="soullink-view" aria-hidden="true">
-          <div class="soullink-log">
-                        <div class="soullink-log__chips" role="group" aria-label="按级别筛选日志">
-              <button type="button" class="soullink-log__chip is-active" data-level="">全部 <span class="soullink-log__chip-count" data-level="">0</span></button>
-              <button type="button" class="soullink-log__chip" data-level="debug">调试 <span class="soullink-log__chip-count" data-level="debug">0</span></button>
-              <button type="button" class="soullink-log__chip" data-level="info">信息 <span class="soullink-log__chip-count" data-level="info">0</span></button>
-              <button type="button" class="soullink-log__chip" data-level="warn">警告 <span class="soullink-log__chip-count" data-level="warn">0</span></button>
-              <button type="button" class="soullink-log__chip" data-level="error">错误 <span class="soullink-log__chip-count" data-level="error">0</span></button>
-            </div>
-            <div class="soullink-log__tools">
-              <input id="${LOG_SEARCH_ID}" class="soullink-input soullink-log__search" type="search" placeholder="🔍 搜索日志内容…" autocomplete="off" spellcheck="false" />
-              <select id="${LOG_SOURCE_ID}" class="soullink-input soullink-log__source" title="按来源筛选日志">
-                <option value="">全部来源</option>
-                <option value="network">网络请求</option>
-                <option value="soulink">SoulLink</option>
-                <option value="console">控制台</option>
-                <option value="event">宿主事件</option>
-                <option value="external">外部扩展</option>
-                <option value="window">页面错误</option>
-                <option value="promise">Promise 拒绝</option>
-              </select>
-              <select id="${LOG_MAX_ID}" class="soullink-input soullink-log__max" title="内存中保留的日志条数，超出自动丢弃最旧">
-                <option value="500">500 条</option>
-                <option value="2000" selected>2000 条</option>
-                <option value="5000">5000 条</option>
-                <option value="10000">10000 条</option>
-              </select>
-            </div>
-            <div class="soullink-log__actions">
-              <button type="button" id="${LOG_PAUSE_ID}" class="soullink-log__action" title="暂停：新日志先缓存（+N），不追加到列表；点「继续」一次性显示">⏸ 暂停</button>
-              <button type="button" id="${LOG_AUTOSCROLL_ID}" class="soullink-log__action is-active" title="跟随：钉在底部，新日志自动滚到底部（点一下关闭）">⏬ 跟随</button>
-              <button type="button" id="${LOG_CLEAR_ID}" class="soullink-log__action" title="清空缓冲中的所有日志">🧹 清空</button>
-              <button type="button" id="${LOG_COPY_ID}" class="soullink-log__action" title="复制全部日志为纯文本">📋 复制</button>
-              <button type="button" id="${LOG_EXPORT_ID}" class="soullink-log__action" title="导出完整 JSON 日志文件">💾 导出</button>
-              <button type="button" id="${LOG_FULL_BODY_EXPORT_ID}" class="soullink-log__action" title="导出最近 ${LOG_FULL_BODY_MAX} 次对话请求的完整请求体/响应体（未截断）">📦 完整请求体</button>
-              <button type="button" id="${LOG_NOISE_ID}" class="soullink-log__action is-active" title="过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用 / 宿主扩展更新检查报错）">🔇 过滤噪音</button>
-            </div>
-            <div class="soullink-log__console">
-              <div id="${LOG_LIST_ID}" class="soullink-log__list" role="log" aria-live="off" aria-label="运行日志"></div>
-              <button type="button" id="${LOG_BACK_ID}" class="soullink-log__back" hidden>↓ 回到最新</button>
-            </div>
-            <div class="soullink-log__status">
-              <span id="${LOG_STATUS_ID}">共 0 条</span>
-              <span id="${LOG_PAUSED_ID}" class="soullink-log__paused" title="暂停期间新日志只入内存（+N），点「继续」后一次性显示" hidden>已暂停 · 新增 +0</span>
-            </div>
-          </div>
-        </section>
-        <section id="${PRESET_VIEW_ID}" class="soullink-view" aria-hidden="true">
-          <div class="soullink-preset">
-            <p class="soullink-preset__note">五个子系统的提示词按标签页切换编辑，改完点「💾 保存」；「↺ 恢复默认」可还原出厂内容。</p>
-            <div id="${PRESET_TABS_ID}" class="soullink-preset__tabs" role="tablist" aria-label="选择要编辑的提示词">
-              ${Object.entries(PRESET_META).map(([key, meta]) => `
-                <button type="button" class="soullink-preset__tab${key === presetActiveKey ? ' is-active' : ''}" role="tab" aria-selected="${key === presetActiveKey ? 'true' : 'false'}" data-prompt-key="${key}" title="${meta.title}">${meta.label}</button>
-              `).join('')}
-            </div>
-            <div class="soullink-preset__editor">
-              <div class="soullink-preset__meta">
-                <span id="${PRESET_STATUS_ID}" class="soullink-preset__status" data-state="default">默认内容</span>
-                <span id="${PRESET_COUNT_ID}" class="soullink-preset__count">0 字</span>
+            <div class="soullink-panel__section">
+              <div class="soullink-panel__section-head">
+                <span class="soullink-panel__section-title">模型</span>
               </div>
-              <textarea id="${PRESET_TEXT_ID}" class="soullink-input soullink-preset__text" spellcheck="false" aria-label="提示词内容" placeholder="（提示词内容为空）"></textarea>
-              <div class="soullink-preset__actions">
-                <button type="button" id="${PRESET_RESET_ID}" class="soullink-btn soullink-btn--ghost">↺ 恢复默认</button>
-                <button type="button" id="${PRESET_SAVE_ID}" class="soullink-btn soullink-btn--primary" disabled>💾 保存</button>
+              <label class="soullink-api__field" for="${API_MODEL_LIST_ID}">
+                <span class="soullink-api__label">选择模型</span>
+                <select id="${API_MODEL_LIST_ID}" class="soullink-input">
+                  <option value="">请先连接并拉取模型</option>
+                </select>
+                <input id="${API_MODEL_ID}" class="soullink-input" type="text" placeholder="或手动填写模型名称" autocomplete="off" spellcheck="false" />
+              </label>
+            </div>
+            <div class="soullink-panel__section">
+              <div class="soullink-panel__section-head">
+                <span class="soullink-panel__section-title">并发限制</span>
+              </div>
+              <div class="soullink-switch-row">
+                <div class="soullink-switch-row__text">
+                  <span class="soullink-switch-row__label">同时最多发送的 AI 请求数</span>
+                </div>
+                <span class="soullink-switch-row__control">
+                  <button type="button" id="${API_CONCURRENCY_TOGGLE_ID}" class="soullink-switch is-on" role="switch" aria-checked="true" title="开启/关闭并发限制">
+                    <span class="soullink-switch__thumb"></span>
+                  </button>
+                  <input id="${API_CONCURRENCY_INPUT_ID}" class="soullink-input soullink-api__concurrency-input" type="number" min="1" max="10" step="1" placeholder="3" autocomplete="off" aria-label="并发上限" />
+                </span>
               </div>
             </div>
-          </div>
-        </section>
-        <section id="${REGISTER_VIEW_ID}" class="soullink-view" aria-hidden="true">
-          <div class="soullink-register">
-            <p class="soullink-register__note">输入角色名字后点「＋ 注册当前角色」（或直接回车）即可加入名单；名单与当前聊天绑定，「注销」会删除该角色的档案数据。</p>
-            <div class="soullink-register__add">
-              <input id="${REGISTER_INPUT_ID}" class="soullink-input soullink-register__input" type="text" placeholder="输入角色名字…" autocomplete="off" spellcheck="false" />
-              <button type="button" id="${REGISTER_ADD_ID}" class="soullink-btn">＋ 注册当前角色</button>
-            </div>
-            <div class="soullink-register__meta">
-              <span id="${REGISTER_STATUS_ID}" class="soullink-register__status">0 个角色</span>
-              <span id="${REGISTER_CHAT_ID}" class="soullink-register__chat"></span>
-            </div>
-            <div class="soullink-register__toolbar">
-              <span id="${REGISTER_NPC_STATUS_ID}" class="soullink-register__npc-status">已关闭</span>
-              <button type="button" id="${REGISTER_NPC_TOGGLE_ID}" class="soullink-btn soullink-register__npc-toggle" title="开启/关闭发送前角色推演">🎭 前置推演：开</button>
-            </div>
-            <div id="${REGISTER_LIST_ID}" class="soullink-register__list"></div>
-          </div>
-        </section>
-        <section id="${ARCHIVE_VIEW_ID}" class="soullink-view" aria-hidden="true">
-          <div class="soullink-archive">
-            <p class="soullink-archive__note">「🔮 分析本角色」会用最近 ${ARCHIVE_RECENT_MESSAGE_COUNT} 条对话与世界书自动更新档案（可并发），「🔮 分析全部角色」一键更新名单里所有角色，「✨ 精编」会用「档案精编」提示词整理该角色档案（规范格式、合并重复、提炼浓缩），也可「✏️ 编辑」手动修改；开启「⚡ 自动维护」后，每轮 AI 回复生成结束会自动预筛并更新档案。</p>
-            <div class="soullink-archive__toolbar">
-              <div class="soullink-archive__toolbar-row">
-                <span id="${ARCHIVE_STATUS_ID}" class="soullink-archive__count">0 个档案</span>
-                <button type="button" id="${ARCHIVE_REFINE_ALL_ID}" class="soullink-btn soullink-archive__refine-all" title="用「档案精编」提示词并发整理名单里所有角色的档案（规范格式、合并重复、提炼浓缩）">✨ 精编全部档案</button>
+            <div class="soullink-panel__section">
+              <div class="soullink-panel__section-head">
+                <span class="soullink-panel__section-title">思考强度</span>
               </div>
-              <button type="button" id="${AUTO_ARCHIVE_TOGGLE_ID}" class="soullink-btn soullink-archive__auto-toggle" title="开启/关闭自动档案维护">⚡ 自动维护：开</button>
-              <button type="button" id="${ARCHIVE_ANALYZE_ALL_ID}" class="soullink-btn soullink-archive__analyze-all">🔮 分析全部角色</button>
+              <div class="soullink-api__field">
+                <span class="soullink-api__label">reasoning_effort</span>
+                <select id="${API_REASONING_EFFORT_ID}" class="soullink-input" title="控制带思考能力模型的思考强度（reasoning_effort）">
+                  <option value="">默认（不发送）</option>
+                  <option value="none">关闭思考</option>
+                  <option value="low">低</option>
+                  <option value="medium">中</option>
+                  <option value="high">高</option>
+                  <option value="max">最大</option>
+                </select>
+              </div>
             </div>
-            <div id="${ARCHIVE_LIST_ID}" class="soullink-archive__list"></div>
-          </div>
-        </section>
-        <section id="${WORLDBOOK_VIEW_ID}" class="soullink-view" aria-hidden="true">
-          <div class="soullink-worldbook">
-            <p class="soullink-worldbook__note">想让某条设定不参与档案分析，勾选该条目左侧的复选框排除即可；点「清除排除」可恢复。</p>
-            <div class="soullink-worldbook__toolbar">
-              <span id="${WORLDBOOK_STATUS_ID}" class="soullink-worldbook__status">读取中…</span>
-              <span id="${WORLDBOOK_CHAT_ID}" class="soullink-worldbook__chat"></span>
-              <button type="button" id="${WORLDBOOK_CLEAR_ID}" class="soullink-btn soullink-btn--ghost soullink-worldbook__clear" hidden>清除排除</button>
-              <button type="button" id="${WORLDBOOK_REFRESH_ID}" class="soullink-btn soullink-worldbook__refresh">↻ 刷新</button>
+          </section>
+          <section id="${FILTER_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-filter">
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">正则过滤</span>
+                  <span id="${FILTER_STATUS_ID}" class="soullink-filter__status" data-state="idle">读取中…</span>
+                </div>
+                <div class="soullink-filter__toolbar">
+                  <button type="button" id="${FILTER_ADD_ID}" class="soullink-btn soullink-btn--ghost">＋ 新建</button>
+                  <button type="button" id="${FILTER_IMPORT_ID}" class="soullink-btn soullink-btn--ghost">📥 导入</button>
+                  <input id="${FILTER_IMPORT_FILE_ID}" type="file" accept=".json,application/json" hidden />
+                  <button type="button" id="${FILTER_EXPORT_ID}" class="soullink-btn soullink-btn--ghost">📤 导出</button>
+                </div>
+                <div id="${FILTER_EDITOR_ID}" class="soullink-filter__editor" hidden>
+                  <div class="soullink-filter__editor-meta">
+                    <span class="soullink-filter__editor-title">编辑正则</span>
+                    <span id="${FILTER_EDITOR_VALID_ID}" class="soullink-filter__valid" data-state="idle"></span>
+                  </div>
+                  <label class="soullink-filter__field" for="${FILTER_EDITOR_NAME_ID}">
+                    <span class="soullink-filter__label">名称</span>
+                    <input id="${FILTER_EDITOR_NAME_ID}" class="soullink-input" type="text" placeholder="例如：智绘姬" autocomplete="off" spellcheck="false" />
+                  </label>
+                  <label class="soullink-filter__field" for="${FILTER_EDITOR_REGEX_ID}">
+                    <span class="soullink-filter__label">表达式</span>
+                    <input id="${FILTER_EDITOR_REGEX_ID}" class="soullink-input soullink-filter__regex-input" type="text" placeholder="/<image>[\\s\\S]*?<\\/image>/g" autocomplete="off" spellcheck="false" />
+                  </label>
+                  <p class="soullink-filter__editor-hint">支持完整字面量（/表达式/标记，如 /<image>[\\s\\S]*?<\\/image>/g）或纯表达式两种写法；保存时校验正则能否编译。</p>
+                  <div class="soullink-filter__editor-actions">
+                    <button type="button" id="${FILTER_EDITOR_CANCEL_ID}" class="soullink-btn soullink-btn--ghost">取消</button>
+                    <button type="button" id="${FILTER_EDITOR_SAVE_ID}" class="soullink-btn soullink-btn--primary" disabled>💾 保存</button>
+                  </div>
+                </div>
+                <div id="${FILTER_LIST_ID}" class="soullink-filter__list"></div>
+              </div>
             </div>
-            <div id="${WORLDBOOK_BANNER_ID}" class="soullink-worldbook__banner" hidden></div>
-            <div id="${WORLDBOOK_LIST_ID}" class="soullink-worldbook__list"></div>
-          </div>
-        </section>
-        <section id="${ROUND_VIEW_ID}" class="soullink-view" aria-hidden="true">
-          <div class="soullink-round">
-            <p class="soullink-round__note">展示最近一轮「发送前角色推演」的结果：预筛入选、各角色内心独白，以及最终注入 SillyTavern 的提示词原文。</p>
-            <div id="${ROUND_SUMMARY_ID}" class="soullink-round__summary" hidden></div>
-            <div id="${ROUND_EMPTY_ID}" class="soullink-round__empty" hidden>还没有推演记录：开启「🎭 前置推演」并发送消息后，这里会展示最近一轮的结果。</div>
-            <div class="soullink-round__gate-head" hidden>
-              <span class="soullink-panel__section-title">预筛原文（Gate 返回）</span>
+          </section>
+          <section id="${LOG_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-log">
+              <div class="soullink-log__chips" role="group" aria-label="按级别筛选日志">
+                <button type="button" class="soullink-log__chip is-active" data-level="">全部 <span class="soullink-log__chip-count" data-level="">0</span></button>
+                <button type="button" class="soullink-log__chip" data-level="debug">调试 <span class="soullink-log__chip-count" data-level="debug">0</span></button>
+                <button type="button" class="soullink-log__chip" data-level="info">信息 <span class="soullink-log__chip-count" data-level="info">0</span></button>
+                <button type="button" class="soullink-log__chip" data-level="warn">警告 <span class="soullink-log__chip-count" data-level="warn">0</span></button>
+                <button type="button" class="soullink-log__chip" data-level="error">错误 <span class="soullink-log__chip-count" data-level="error">0</span></button>
+              </div>
+              <div class="soullink-log__tools">
+                <input id="${LOG_SEARCH_ID}" class="soullink-input soullink-log__search" type="search" placeholder="🔍 搜索日志内容…" autocomplete="off" spellcheck="false" />
+                <select id="${LOG_SOURCE_ID}" class="soullink-input soullink-log__source" title="按来源筛选日志">
+                  <option value="">全部来源</option>
+                  <option value="network">网络请求</option>
+                  <option value="soulink">SoulLink</option>
+                  <option value="console">控制台</option>
+                  <option value="event">宿主事件</option>
+                  <option value="external">外部扩展</option>
+                  <option value="window">页面错误</option>
+                  <option value="promise">Promise 拒绝</option>
+                </select>
+                <select id="${LOG_MAX_ID}" class="soullink-input soullink-log__max" title="内存中保留的日志条数，超出自动丢弃最旧">
+                  <option value="500">500 条</option>
+                  <option value="2000" selected>2000 条</option>
+                  <option value="5000">5000 条</option>
+                  <option value="10000">10000 条</option>
+                </select>
+              </div>
+              <div class="soullink-log__actions">
+                <button type="button" id="${LOG_PAUSE_ID}" class="soullink-log__action" title="暂停：新日志先缓存（+N），不追加到列表；点「继续」一次性显示">⏸ 暂停</button>
+                <button type="button" id="${LOG_AUTOSCROLL_ID}" class="soullink-log__action is-active" title="跟随：钉在底部，新日志自动滚到底部（点一下关闭）">⏬ 跟随</button>
+                <button type="button" id="${LOG_CLEAR_ID}" class="soullink-log__action" title="清空缓冲中的所有日志">🧹 清空</button>
+                <button type="button" id="${LOG_COPY_ID}" class="soullink-log__action" title="复制全部日志为纯文本">📋 复制</button>
+                <button type="button" id="${LOG_EXPORT_ID}" class="soullink-log__action" title="导出完整 JSON 日志文件">💾 导出</button>
+                <button type="button" id="${LOG_FULL_BODY_EXPORT_ID}" class="soullink-log__action" title="导出最近 ${LOG_FULL_BODY_MAX} 次对话请求的完整请求体/响应体（未截断）">📦 完整请求体</button>
+                <button type="button" id="${LOG_NOISE_ID}" class="soullink-log__action is-active" title="过滤已知噪音（世界书扫描 / 宏变量 dump / 正则跳过 / 事件总线 / 内部保存 / 非模型网络调用 / 宿主扩展更新检查报错）">🔇 过滤噪音</button>
+              </div>
+              <div class="soullink-log__console">
+                <div id="${LOG_LIST_ID}" class="soullink-log__list" role="log" aria-live="off" aria-label="运行日志"></div>
+                <button type="button" id="${LOG_BACK_ID}" class="soullink-log__back" hidden>↓ 回到最新</button>
+              </div>
+              <div class="soullink-log__status">
+                <span id="${LOG_STATUS_ID}">共 0 条</span>
+                <span id="${LOG_PAUSED_ID}" class="soullink-log__paused" title="暂停期间新日志只入内存（+N），点「继续」后一次性显示" hidden>已暂停 · 新增 +0</span>
+              </div>
             </div>
-            <pre id="${ROUND_GATE_TEXT_ID}" class="soullink-round__gate-text" hidden></pre>
-            <div class="soullink-round__characters-head" hidden>
-              <span class="soullink-panel__section-title">角色内心独白</span>
+          </section>
+          <section id="${PRESET_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-preset">
+              <div id="${PRESET_TABS_ID}" class="soullink-preset__tabs" role="tablist" aria-label="选择要编辑的提示词">
+                ${Object.entries(PRESET_META).map(([key, meta]) => `
+                  <button type="button" class="soullink-preset__tab${key === presetActiveKey ? ' is-active' : ''}" role="tab" aria-selected="${key === presetActiveKey ? 'true' : 'false'}" data-prompt-key="${key}" title="${meta.title}">${meta.label}</button>
+                `).join('')}
+              </div>
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">提示词内容</span>
+                  <span id="${PRESET_STATUS_ID}" class="soullink-preset__status" data-state="default">默认内容</span>
+                  <span id="${PRESET_COUNT_ID}" class="soullink-preset__count">0 字</span>
+                </div>
+                <textarea id="${PRESET_TEXT_ID}" class="soullink-input soullink-preset__text" spellcheck="false" aria-label="提示词内容" placeholder="（提示词内容为空）"></textarea>
+                <div class="soullink-preset__actions">
+                  <button type="button" id="${PRESET_RESET_ID}" class="soullink-btn soullink-btn--ghost">↺ 恢复默认</button>
+                  <button type="button" id="${PRESET_SAVE_ID}" class="soullink-btn soullink-btn--primary" disabled>💾 保存</button>
+                </div>
+              </div>
             </div>
-            <div id="${ROUND_CHARACTERS_ID}" class="soullink-round__characters" hidden></div>
-            <div class="soullink-round__inject-head" hidden>
-              <span class="soullink-panel__section-title">注入提示词原文</span>
-              <button type="button" id="${ROUND_COPY_ID}" class="soullink-btn soullink-btn--ghost soullink-round__copy">⧉ 复制</button>
+          </section>
+          <section id="${REGISTER_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-register">
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">注册角色</span>
+                </div>
+                <div class="soullink-register__add">
+                  <input id="${REGISTER_INPUT_ID}" class="soullink-input soullink-register__input" type="text" placeholder="输入角色名字…" autocomplete="off" spellcheck="false" />
+                  <button type="button" id="${REGISTER_ADD_ID}" class="soullink-btn">＋ 注册当前角色</button>
+                </div>
+              </div>
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">角色名单</span>
+                  <span id="${REGISTER_STATUS_ID}" class="soullink-register__status">0 个角色</span>
+                </div>
+                <div id="${REGISTER_LIST_ID}" class="soullink-register__list"></div>
+              </div>
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">发送前角色推演</span>
+                </div>
+                <div class="soullink-switch-row">
+                  <div class="soullink-switch-row__text">
+                    <span class="soullink-switch-row__label">开启后，发送消息前先推演各角色的内心独白</span>
+                  </div>
+                  <span class="soullink-switch-row__control">
+                    <span id="${REGISTER_NPC_STATUS_ID}" class="soullink-register__npc-status" data-state="idle">已关闭</span>
+                    <button type="button" id="${REGISTER_NPC_TOGGLE_ID}" class="soullink-switch is-on" role="switch" aria-checked="true" title="开启/关闭发送前角色推演">
+                      <span class="soullink-switch__thumb"></span>
+                    </button>
+                  </span>
+                </div>
+              </div>
             </div>
-            <pre id="${ROUND_INJECT_TEXT_ID}" class="soullink-round__inject-text" hidden></pre>
-          </div>
-        </section>
+          </section>
+          <section id="${ARCHIVE_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-archive">
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">自动维护</span>
+                </div>
+                <div class="soullink-switch-row">
+                  <div class="soullink-switch-row__text">
+                    <span class="soullink-switch-row__label">每轮 AI 回复生成结束后自动预筛并更新档案</span>
+                  </div>
+                  <button type="button" id="${AUTO_ARCHIVE_TOGGLE_ID}" class="soullink-switch is-on" role="switch" aria-checked="true" title="开启/关闭自动档案维护">
+                    <span class="soullink-switch__thumb"></span>
+                  </button>
+                </div>
+              </div>
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">档案</span>
+                  <span id="${ARCHIVE_STATUS_ID}" class="soullink-archive__count">0 个档案</span>
+                </div>
+                <div class="soullink-archive__toolbar">
+                  <button type="button" id="${ARCHIVE_REFINE_ALL_ID}" class="soullink-btn soullink-archive__refine-all" title="用「档案精编」提示词并发整理名单里所有角色的档案（规范格式、合并重复、提炼浓缩）">✨ 精编全部档案</button>
+                  <button type="button" id="${ARCHIVE_ANALYZE_ALL_ID}" class="soullink-btn soullink-archive__analyze-all">🔮 分析全部角色</button>
+                </div>
+                <div id="${ARCHIVE_LIST_ID}" class="soullink-archive__list"></div>
+              </div>
+            </div>
+          </section>
+          <section id="${WORLDBOOK_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-worldbook">
+              <div class="soullink-panel__section">
+                <div class="soullink-panel__section-head">
+                  <span class="soullink-panel__section-title">世界书条目</span>
+                  <span id="${WORLDBOOK_STATUS_ID}" class="soullink-worldbook__status">读取中…</span>
+                  <span id="${WORLDBOOK_CHAT_ID}" class="soullink-worldbook__chat"></span>
+                </div>
+                <p class="soullink-worldbook__note">想让某条设定不参与档案分析，勾选该条目左侧的复选框排除即可；点「清除排除」可恢复。</p>
+                <div class="soullink-worldbook__toolbar">
+                  <button type="button" id="${WORLDBOOK_CLEAR_ID}" class="soullink-btn soullink-btn--ghost soullink-worldbook__clear" hidden>清除排除</button>
+                  <button type="button" id="${WORLDBOOK_REFRESH_ID}" class="soullink-btn soullink-worldbook__refresh">↻ 刷新</button>
+                </div>
+                <div id="${WORLDBOOK_BANNER_ID}" class="soullink-worldbook__banner" hidden></div>
+                <div id="${WORLDBOOK_LIST_ID}" class="soullink-worldbook__list"></div>
+              </div>
+            </div>
+          </section>
+          <section id="${ROUND_VIEW_ID}" class="soullink-view" aria-hidden="true">
+            <div class="soullink-round">
+              <p class="soullink-round__note">展示最近一轮「发送前角色推演」的结果：预筛入选、各角色内心独白，以及最终注入 SillyTavern 的提示词原文。</p>
+              <div id="${ROUND_SUMMARY_ID}" class="soullink-round__summary" hidden></div>
+              <div id="${ROUND_EMPTY_ID}" class="soullink-round__empty" hidden>还没有推演记录：开启「🎭 前置推演」并发送消息后，这里会展示最近一轮的结果。</div>
+              <div class="soullink-round__gate-head" hidden>
+                <span class="soullink-panel__section-title">预筛原文（Gate 返回）</span>
+              </div>
+              <pre id="${ROUND_GATE_TEXT_ID}" class="soullink-round__gate-text" hidden></pre>
+              <div class="soullink-round__characters-head" hidden>
+                <span class="soullink-panel__section-title">角色内心独白</span>
+              </div>
+              <div id="${ROUND_CHARACTERS_ID}" class="soullink-round__characters" hidden></div>
+              <div class="soullink-round__inject-head" hidden>
+                <span class="soullink-panel__section-title">注入提示词原文</span>
+                <button type="button" id="${ROUND_COPY_ID}" class="soullink-btn soullink-btn--ghost soullink-round__copy">⧉ 复制</button>
+              </div>
+              <pre id="${ROUND_INJECT_TEXT_ID}" class="soullink-round__inject-text" hidden></pre>
+            </div>
+          </section>
+        </div>
       </div>
       <div class="soullink-panel__footer">
         <span class="soullink-panel__version">
@@ -930,7 +1017,6 @@ function createPanel() {
   initWorldBookSection(panel);
   document.getElementById(VERSION_CHECK_ID)?.addEventListener('click', () => checkLatestVersion(true));
   checkLatestVersion();
-  panel.querySelector('.soullink-panel__close')?.addEventListener('click', closePanel);
   if (!globalThis[ESC_KEY_HANDLER_KEY]) {
     globalThis[ESC_KEY_HANDLER_KEY] = (event) => {
       if (event.key !== 'Escape') return;

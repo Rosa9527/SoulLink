@@ -533,8 +533,8 @@ function renderAutoArchiveToggle() {
   if (!button) return;
   const ctx = getContextSafe();
   const enabled = ctx ? getSettings(ctx).autoArchiveEnabled !== false : true;
-  button.textContent = enabled ? '⚡ 自动维护：开' : '⚡ 自动维护：关';
-  button.classList.toggle('is-active', enabled);
+  button.classList.toggle('is-on', enabled);
+  button.setAttribute('aria-checked', String(enabled));
   button.title = enabled ? '点击关闭自动档案维护' : '点击开启自动档案维护';
 }
 
