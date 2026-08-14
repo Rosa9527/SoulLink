@@ -7,12 +7,12 @@ const VERSION_CHECK_ID = 'soullink-version-check';
 const THEME_ID = 'soullink-theme';
 const THEME_MENU_ID = 'soullink-theme-menu';
 // 主题注册表：id 对应 style.css 中 [data-theme='...'] 的变量覆盖；name 显示在按钮与菜单里。
-// 默认主题为「古风典雅」（首位即默认，新用户默认使用），后续新增主题只需在此追加条目并在 style.css 补变量覆盖。
-const DEFAULT_THEME = 'gufeng';
+// 默认主题为「手绘涂鸦」（首位即默认，新用户默认使用），后续新增主题只需在此追加条目并在 style.css 补变量覆盖。
+const DEFAULT_THEME = 'paper';
 const THEMES = Object.freeze([
+  { id: 'paper', name: '手绘涂鸦' },
   { id: 'gufeng', name: '古风典雅' },
   { id: 'macos', name: 'macOS 风格' },
-  { id: 'paper', name: '手绘涂鸦' },
   { id: 'qq', name: '聊天气泡' },
 ]);
 // 版本检查结果缓存时长：1 小时内不重复联网，点击提示可强制重新检查。
