@@ -2739,16 +2739,26 @@ textarea.soullink-input {
   --sl-radius-control: 8px;
 }
 
-/* 悬浮球：QQ 蓝 */
+/* 悬浮球：QQ 蓝磨砂玻璃 */
 .soullink-sphere:where([data-theme='qq']) {
   color: #fff;
-  background: linear-gradient(180deg, #2ec8ff, #12b7f5);
-  border: 0.5px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 6px 16px rgba(18, 183, 245, 0.4);
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.08) 45%, rgba(255, 255, 255, 0.02) 70%),
+    linear-gradient(180deg, rgba(46, 200, 255, 0.38), rgba(18, 183, 245, 0.38));
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.12),
+    0 6px 16px rgba(18, 183, 245, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
 }
 
 .soullink-sphere:where([data-theme='qq']):hover {
-  box-shadow: 0 8px 20px rgba(18, 183, 245, 0.5);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.1),
+    0 8px 20px rgba(18, 183, 245, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
   transform: translateY(-2px) scale(1.05);
 }
 
@@ -2935,21 +2945,29 @@ textarea.soullink-input {
   --sl-font: "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "SimSun", serif;
 }
 
-/* 悬浮球：印章 */
+/* 悬浮球：朱砂磨砂玻璃 */
 .soullink-sphere:where([data-theme='gufeng']) {
   color: #faf5e9;
   background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0) 46%),
-    var(--sl-violet);
-  border: 1.5px solid rgba(43, 36, 28, 0.5);
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.08) 45%, rgba(255, 255, 255, 0.02) 70%),
+    rgba(176, 58, 46, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 50%;
-  box-shadow: 2px 3px 0 rgba(43, 36, 28, 0.22);
+  box-shadow:
+    0 0 0 0.5px rgba(43, 36, 28, 0.2),
+    0 4px 14px rgba(43, 36, 28, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
   transform: rotate(-2deg);
 }
 
 .soullink-sphere:where([data-theme='gufeng']):hover {
   transform: rotate(0deg) scale(1.06);
-  box-shadow: 3px 4px 0 rgba(43, 36, 28, 0.26);
+  box-shadow:
+    0 0 0 0.5px rgba(43, 36, 28, 0.18),
+    0 8px 20px rgba(176, 58, 46, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .soullink-sphere:where([data-theme='gufeng']):active {
