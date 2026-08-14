@@ -2392,8 +2392,8 @@ textarea.soullink-input {
 
 /* =========================================================
    SoulLink · 手绘涂鸦主题（paper）
-   牛皮纸便签 + 手绘抖动描边 + 虚线点缀 + 蜡笔红绿灯；
-   用 #soullink-wobble 抖动滤镜与不规则圆角模拟手绘质感。
+   牛皮纸便签 + 手绘描边 + 虚线点缀 + 蜡笔红绿灯；
+   方正规整：无抖动滤镜、无歪斜旋转，统一小圆角。
    ========================================================= */
 
 .soullink-sphere:where([data-theme='paper']),
@@ -2439,9 +2439,9 @@ textarea.soullink-input {
   --sl-shadow-sm: 3px 4px 0 rgba(61, 43, 31, 0.14);
   --sl-shadow-md: 4px 5px 0 rgba(61, 43, 31, 0.16), 0 10px 16px rgba(61, 43, 31, 0.12);
   --sl-shadow-window: 8px 9px 0 rgba(61, 43, 31, 0.16), 0 18px 34px rgba(61, 43, 31, 0.28);
-  --sl-radius-window: 255px 15px 225px 15px / 15px 225px 15px 255px;
-  --sl-radius-card: 255px 12px 235px 12px / 12px 235px 12px 255px;
-  --sl-radius-control: 255px 10px 235px 10px / 10px 235px 10px 255px;
+  --sl-radius-window: 6px;
+  --sl-radius-card: 4px;
+  --sl-radius-control: 4px;
 }
 
 /* 悬浮球：纸片小贴纸 */
@@ -2458,7 +2458,6 @@ textarea.soullink-input {
   box-shadow:
     3px 4px 0 rgba(61, 43, 31, 0.18),
     0 8px 14px rgba(61, 43, 31, 0.16);
-  transform: rotate(-4deg);
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
@@ -2473,23 +2472,19 @@ textarea.soullink-input {
   animation: soullink-spin 16s linear infinite;
 }
 
-.soullink-sphere:where([data-theme='paper']) .soullink-sphere__icon {
-  transform: rotate(5deg);
-}
-
 .soullink-sphere:where([data-theme='paper']):hover {
-  transform: rotate(3deg) scale(1.07);
+  transform: scale(1.07);
   box-shadow:
     4px 5px 0 rgba(61, 43, 31, 0.2),
     0 10px 16px rgba(61, 43, 31, 0.18);
 }
 
 .soullink-sphere:where([data-theme='paper']):active {
-  transform: rotate(-2deg) scale(0.94);
+  transform: scale(0.94);
 }
 
 .soullink-sphere:where([data-theme='paper']).is-dragging {
-  transform: rotate(0deg) scale(1.06);
+  transform: scale(1.06);
 }
 
 /* 窗口：牛皮纸便签卡 */
@@ -2498,12 +2493,6 @@ textarea.soullink-input {
   border-radius: var(--sl-radius-window);
   background: var(--sl-window-bg);
   box-shadow: var(--sl-shadow-window);
-  filter: url(#soullink-wobble);
-  transform: rotate(-0.5deg);
-}
-
-.soullink-panel:where([data-theme='paper']) .soullink-panel__dialog.is-dragging {
-  transform: rotate(0deg);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-panel__titlebar {
@@ -2513,37 +2502,31 @@ textarea.soullink-input {
 .soullink-panel:where([data-theme='paper']) .soullink-panel__titlebar-title {
   font-weight: 700;
   letter-spacing: 1px;
-  transform: translateX(-50%) rotate(-1deg);
+  transform: translateX(-50%);
 }
 
-/* 窗控：手绘圆形按钮（纸片描边 + 歪斜） */
+/* 窗控：手绘圆形按钮（纸片描边） */
 .soullink-panel:where([data-theme='paper']) .soullink-panel__back,
 .soullink-panel:where([data-theme='paper']) .soullink-panel__close {
   width: 28px;
   height: 28px;
   border: 2.5px solid var(--sl-ink);
-  border-radius: 50% 47% 53% 50% / 47% 53% 50% 53%;
+  border-radius: 50%;
   background: transparent;
   color: var(--sl-ink);
   font-size: 14px;
   font-weight: 700;
-  transform: rotate(-4deg);
-}
-
-.soullink-panel:where([data-theme='paper']) .soullink-panel__close {
-  border-radius: 47% 53% 50% 50% / 53% 47% 53% 47%;
-  transform: rotate(4deg);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-panel__back:hover {
   background: var(--sl-yellow);
-  transform: rotate(6deg) scale(1.12);
+  transform: scale(1.12);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-panel__close:hover {
   background: var(--sl-pink);
   color: #fff;
-  transform: rotate(-8deg) scale(1.15);
+  transform: scale(1.15);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-panel__toolbar {
@@ -2552,7 +2535,6 @@ textarea.soullink-input {
 
 .soullink-panel:where([data-theme='paper']) .soullink-panel__title {
   letter-spacing: 1px;
-  transform: rotate(-0.5deg);
 }
 
 /* 分组卡片：便签纸 */
@@ -2560,15 +2542,6 @@ textarea.soullink-input {
   border: 2px solid rgba(61, 43, 31, 0.45);
   border-radius: var(--sl-radius-card);
   box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.12);
-  filter: url(#soullink-wobble);
-}
-
-.soullink-panel:where([data-theme='paper']) .soullink-panel__section:nth-child(even) {
-  transform: rotate(0.4deg);
-}
-
-.soullink-panel:where([data-theme='paper']) .soullink-panel__section:nth-child(odd) {
-  transform: rotate(-0.3deg);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-panel__section-title::before {
@@ -2576,7 +2549,6 @@ textarea.soullink-input {
   margin-right: 6px;
   font-size: 12px;
   color: var(--sl-pink);
-  transform: rotate(-12deg);
   display: inline-block;
 }
 
@@ -2592,12 +2564,12 @@ textarea.soullink-input {
 
 .soullink-panel:where([data-theme='paper']) .soullink-btn:hover:not(:disabled) {
   background: var(--sl-paper-deep);
-  transform: rotate(-1.2deg) scale(1.03);
+  transform: scale(1.03);
   box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.2);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-btn:active:not(:disabled) {
-  transform: translate(1px, 1px) rotate(0.6deg);
+  transform: translate(1px, 1px);
   box-shadow: 1px 1px 0 rgba(61, 43, 31, 0.2);
 }
 
@@ -2650,7 +2622,6 @@ textarea.soullink-input {
   border: 2.5px solid var(--sl-ink);
   width: 42px;
   height: 24px;
-  filter: url(#soullink-wobble);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-switch__thumb {
@@ -2679,7 +2650,6 @@ textarea.soullink-input {
   padding: 7px 10px;
   background: var(--sl-note-bg);
   border-left: 3px solid var(--sl-pink);
-  transform: rotate(-0.4deg);
 }
 
 /* 日志控制台：格子纸 */
@@ -2689,15 +2659,13 @@ textarea.soullink-input {
     var(--sl-console-bg);
   border: 2.5px solid var(--sl-ink);
   border-radius: var(--sl-radius-card);
-  filter: url(#soullink-wobble);
 }
 
 /* 概览 Logo：贴纸 */
 .soullink-panel:where([data-theme='paper']) .soullink-home__logo {
   background: var(--sl-violet);
   border: 2.5px solid var(--sl-ink);
-  border-radius: 44% 56% 52% 48% / 56% 44% 56% 44%;
-  transform: rotate(-6deg);
+  border-radius: 12px;
   box-shadow: 3px 4px 0 rgba(61, 43, 31, 0.18);
 }
 
@@ -2709,8 +2677,6 @@ textarea.soullink-input {
 .soullink-panel:where([data-theme='paper']) .soullink-panel__theme-menu {
   border: 2px solid var(--sl-ink);
   border-radius: var(--sl-radius-control);
-  filter: url(#soullink-wobble);
-  transform: rotate(-0.5deg);
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-confirm__card,
@@ -2718,8 +2684,6 @@ textarea.soullink-input {
   border: 3px solid var(--sl-ink);
   border-radius: var(--sl-radius-window);
   box-shadow: var(--sl-shadow-window);
-  filter: url(#soullink-wobble);
-  transform: rotate(-0.6deg);
 }
 
 /* =========================================================
