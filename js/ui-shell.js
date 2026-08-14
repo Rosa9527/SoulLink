@@ -662,22 +662,11 @@ function createPanel() {
                   <span class="soullink-panel__section-title">功能一览</span>
                 </div>
                 <div class="soullink-home__rows">
-                  <button type="button" class="soullink-home__row" data-view="${API_VIEW_ID}" title="打开 API 连接设置">
-                    <span class="soullink-home__row-icon"><span class="${MENU_ICON_CLASS}"></span></span>
-                    <span class="soullink-home__row-label">API 连接</span>
-                    <span id="${HOME_API_STATUS_ID}" class="soullink-home__row-status" data-state="idle">尚未连接</span>
-                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
-                  </button>
-                  <button type="button" class="soullink-home__row" data-view="${FILTER_VIEW_ID}" title="打开正则过滤设置">
-                    <span class="soullink-home__row-icon"><span class="${FILTER_ICON_CLASS}"></span></span>
-                    <span class="soullink-home__row-label">正则过滤</span>
-                    <span id="${HOME_FILTER_STATUS_ID}" class="soullink-home__row-status" data-state="idle">未启用</span>
-                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
-                  </button>
-                  <button type="button" class="soullink-home__row" data-view="${REGISTER_VIEW_ID}" title="打开角色注册管理">
-                    <span class="soullink-home__row-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
-                    <span class="soullink-home__row-label">角色注册</span>
-                    <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无角色</span>
+                  <button type="button" id="${HOME_ROUND_CARD_ID}" class="soullink-home__row" data-view="${ROUND_VIEW_ID}" title="查看上一轮角色扮演的结果">
+                    <span class="soullink-home__row-icon"><span class="${ROUND_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">角色扮演</span>
+                    <span id="${HOME_ROUND_BADGE_ID}" class="soullink-home__row-badge" data-state="idle" hidden></span>
+                    <span id="${HOME_ROUND_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无记录</span>
                     <span class="soullink-home__row-chevron" aria-hidden="true"></span>
                   </button>
                   <button type="button" class="soullink-home__row" data-view="${ARCHIVE_VIEW_ID}" title="打开档案系统">
@@ -686,29 +675,40 @@ function createPanel() {
                     <span id="${HOME_ARCHIVE_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无档案</span>
                     <span class="soullink-home__row-chevron" aria-hidden="true"></span>
                   </button>
+                  <button type="button" class="soullink-home__row" data-view="${REGISTER_VIEW_ID}" title="打开角色注册管理">
+                    <span class="soullink-home__row-icon"><span class="${REGISTER_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">角色注册</span>
+                    <span id="${HOME_REGISTER_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无角色</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
                   <button type="button" class="soullink-home__row" data-view="${WORLDBOOK_VIEW_ID}" title="打开世界书（触发规则跟随 SillyTavern）">
                     <span class="soullink-home__row-icon"><span class="${WORLDBOOK_ICON_CLASS}"></span></span>
                     <span class="soullink-home__row-label">世界书</span>
                     <span id="${HOME_WORLDBOOK_STATUS_ID}" class="soullink-home__row-status" data-state="idle">跟随酒馆规则</span>
                     <span class="soullink-home__row-chevron" aria-hidden="true"></span>
                   </button>
-                  <button type="button" id="${HOME_ROUND_CARD_ID}" class="soullink-home__row" data-view="${ROUND_VIEW_ID}" title="查看上一轮角色扮演的结果">
-                    <span class="soullink-home__row-icon"><span class="${ROUND_ICON_CLASS}"></span></span>
-                    <span class="soullink-home__row-label">角色扮演</span>
-                    <span id="${HOME_ROUND_BADGE_ID}" class="soullink-home__row-badge" data-state="idle" hidden></span>
-                    <span id="${HOME_ROUND_STATUS_ID}" class="soullink-home__row-status" data-state="idle">暂无记录</span>
-                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
-                  </button>
-                  <button type="button" class="soullink-home__row" data-view="${LOG_VIEW_ID}" title="打开后台日志系统">
-                    <span class="soullink-home__row-icon"><span class="${LOG_ICON_CLASS}"></span></span>
-                    <span class="soullink-home__row-label">日志系统</span>
-                    <span class="soullink-home__row-status" data-state="idle">实时控制台</span>
+                  <button type="button" class="soullink-home__row" data-view="${API_VIEW_ID}" title="打开 API 连接设置">
+                    <span class="soullink-home__row-icon"><span class="${MENU_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">API 连接</span>
+                    <span id="${HOME_API_STATUS_ID}" class="soullink-home__row-status" data-state="idle">尚未连接</span>
                     <span class="soullink-home__row-chevron" aria-hidden="true"></span>
                   </button>
                   <button type="button" class="soullink-home__row" data-view="${PRESET_VIEW_ID}" title="打开预设管理">
                     <span class="soullink-home__row-icon"><span class="${PRESET_ICON_CLASS}"></span></span>
                     <span class="soullink-home__row-label">预设</span>
                     <span id="${HOME_PRESET_STATUS_ID}" class="soullink-home__row-status" data-state="idle">默认配置</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${FILTER_VIEW_ID}" title="打开正则过滤设置">
+                    <span class="soullink-home__row-icon"><span class="${FILTER_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">正则过滤</span>
+                    <span id="${HOME_FILTER_STATUS_ID}" class="soullink-home__row-status" data-state="idle">未启用</span>
+                    <span class="soullink-home__row-chevron" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="soullink-home__row" data-view="${LOG_VIEW_ID}" title="打开后台日志系统">
+                    <span class="soullink-home__row-icon"><span class="${LOG_ICON_CLASS}"></span></span>
+                    <span class="soullink-home__row-label">日志系统</span>
+                    <span class="soullink-home__row-status" data-state="idle">实时控制台</span>
                     <span class="soullink-home__row-chevron" aria-hidden="true"></span>
                   </button>
                 </div>
