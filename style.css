@@ -3174,19 +3174,30 @@ textarea.soullink-input {
 
 /* =========================================================
    小屏适配（手机 / 窄窗口）
-   面板近全屏 + 压缩纵向空间 + 操作行自动换行。
+   面板居中窗口化（四周留边，对齐 Kaleidoscope）+ 压缩纵向空间 + 操作行自动换行。
    ========================================================= */
 @media (max-width: 640px) {
-  /* 窗口占满屏幕：覆盖 JS 记忆的 left/top 内联位置 */
+  /* 面板容器改为居中容器：窗口保持合适尺寸，而非占满全屏 */
+  .soullink-panel.is-open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+  }
+
+  /* 窗口保持窗口化尺寸：重置 JS 记忆的 left/top 内联位置，居中 + 视口四周留 24px 边距；
+     dvh 回退避免移动端浏览器地址栏收起/展开时底部被裁切 */
   .soullink-panel__dialog {
-    left: 0 !important;
-    top: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    max-width: none;
-    max-height: none;
-    border-radius: 0;
-    border: none;
+    left: auto !important;
+    top: auto !important;
+    width: min(700px, calc(100vw - 24px));
+    height: min(600px, calc(100vh - 48px));
+    height: min(600px, calc(100dvh - 48px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 48px);
+    max-height: calc(100dvh - 48px);
+    border-radius: 10px;
+    border: 0.5px solid var(--sl-border-strong);
   }
 
   /* 纵向空间压缩 */
