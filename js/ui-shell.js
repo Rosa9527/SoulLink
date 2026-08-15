@@ -192,6 +192,10 @@ function createSphere() {
   return sphere;
 }
 
+function isMobileViewport() {
+  return Boolean(window.matchMedia && window.matchMedia('(max-width: 640px)').matches);
+}
+
 function clampPanelPosition(dialog, left, top) {
   const width = dialog?.offsetWidth || 340;
   const height = dialog?.offsetHeight || 300;
@@ -212,19 +216,32 @@ function setPanelPosition(panel, left, top) {
   panel.dataset.left = String(next.left);
   panel.dataset.top = String(next.top);
   panel.dataset.positioned = 'true';
+  // 位置记忆按视口模式区分（手机 / 桌面），两边的拖拽位置互不串位
+  panel.dataset.positionMode = isMobileViewport() ? 'mobile' : 'desktop';
 }
 
 function ensurePanelPosition(panel) {
   const dialog = panel?.querySelector('.soullink-panel__dialog');
   if (!panel || !dialog) return;
+  const mobile = isMobileViewport();
   const storedLeft = Number(panel.dataset.left);
   const storedTop = Number(panel.dataset.top);
-  if (Number.isFinite(storedLeft) && Number.isFinite(storedTop)) {
+  // 仅在模式匹配时恢复记忆位置；模式不符（如桌面拖过又上手机）时回到该模式默认位置
+  if (panel.dataset.positionMode === (mobile ? 'mobile' : 'desktop')
+    && Number.isFinite(storedLeft) && Number.isFinite(storedTop)) {
     setPanelPosition(panel, storedLeft, storedTop);
     return;
   }
-  const defaultLeft = Math.max(EDGE_GAP, window.innerWidth - dialog.offsetWidth - EDGE_GAP);
-  const defaultTop = EDGE_GAP;
+  let defaultLeft;
+  let defaultTop;
+  if (mobile) {
+    // 手机端默认居中（四周留边）
+    defaultLeft = Math.max(0, Math.round((window.innerWidth - dialog.offsetWidth) / 2));
+    defaultTop = Math.max(0, Math.round((window.innerHeight - dialog.offsetHeight) / 2));
+  } else {
+    defaultLeft = Math.max(EDGE_GAP, window.innerWidth - dialog.offsetWidth - EDGE_GAP);
+    defaultTop = EDGE_GAP;
+  }
   setPanelPosition(panel, defaultLeft, defaultTop);
 }
 
@@ -264,6 +281,7 @@ function initDraggablePanel(panel) {
     setPanelPosition(panel, event.clientX - dragState.offsetX, event.clientY - dragState.offsetY);
   });
   window.addEventListener('pointerup', stopDragging);
+  window.addEventListener('pointercancel', stopDragging);
   window.addEventListener('resize', () => ensurePanelPosition(panel));
   panel.dataset.dragReady = 'true';
 }

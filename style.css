@@ -208,6 +208,11 @@
   user-select: none;
 }
 
+/* 拖拽句柄：触摸端禁用浏览器手势（滚动 / 双击缩放），保证拖拽时 pointermove 连续 */
+.soullink-drag-handle {
+  touch-action: none;
+}
+
 /* ---------- 标题栏：红绿灯 + 应用名 + 搜索 ---------- */
 .soullink-panel__titlebar {
   position: relative;
@@ -3185,11 +3190,12 @@ textarea.soullink-input {
     padding: 12px;
   }
 
-  /* 窗口保持窗口化尺寸：重置 JS 记忆的 left/top 内联位置，居中 + 视口四周留 24px 边距；
-     dvh 回退避免移动端浏览器地址栏收起/展开时底部被裁切 */
+  /* 窗口保持窗口化尺寸：JS 打开面板时立即设置内联 left/top（手机端默认居中、
+     可拖拽），这里仅作未定位时的兜底（flex 居中），普通规则让位内联样式，
+     不压制拖拽；dvh 回退避免移动端浏览器地址栏收起/展开时底部被裁切 */
   .soullink-panel__dialog {
-    left: auto !important;
-    top: auto !important;
+    left: auto;
+    top: auto;
     width: min(700px, calc(100vw - 24px));
     height: min(600px, calc(100vh - 48px));
     height: min(600px, calc(100dvh - 48px));
