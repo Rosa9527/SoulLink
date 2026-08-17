@@ -1785,6 +1785,12 @@ textarea.soullink-input {
   word-break: break-word;
 }
 
+/* 排除的条目：名字划掉 + 置灰，与「已排除」徽章呼应 */
+.soullink-worldbook__entry.is-excluded .soullink-worldbook__entry-name {
+  text-decoration: line-through;
+  color: var(--sl-text-secondary);
+}
+
 .soullink-worldbook__entry-badges {
   display: flex;
   flex-wrap: wrap;
