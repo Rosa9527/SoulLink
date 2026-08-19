@@ -12,6 +12,7 @@ npm-debug.log*
 # 一次性修补脚本 / 临时快照文本（开发产物，不上传）
 _apply.js
 _v2block.txt
+_switch_test.html
 
 # Windows 快捷方式（本机专用，不上传）
 *.lnk

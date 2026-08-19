@@ -11,12 +11,6 @@ function setFilterStatus(message, state = 'idle') {
   if (!status) return;
   status.textContent = message;
   status.dataset.state = state;
-  // 概览页「正则过滤」行同步同一状态
-  const home = document.getElementById(HOME_FILTER_STATUS_ID);
-  if (home) {
-    home.textContent = message;
-    home.dataset.state = state;
-  }
 }
 
 function renderFilterStatus() {

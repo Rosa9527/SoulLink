@@ -1,5 +1,5 @@
 /* =========================================================
-   SoulLink · 前端样式（v1.6.0 全新窗口化布局）
+   SoulLink · 前端样式（v1.7.0）
    ---------------------------------------------------------
    架构：悬浮球（启动器）→ 独立应用窗口（对话框）。
    窗口 = 标题栏（左上返回 + 居中应用名 + 右上关闭）+ 工具栏（页面大标题）
@@ -9,6 +9,17 @@
    质感规则换肤；结构/布局全部由基础块承担，主题只负责「皮肤」。
    带 [data-state] 的状态色由基础块统一定义（idle/ok/warn/error/busy）。
    ========================================================= */
+
+/* ---------- 内置字体：斯宾塞风格手写体（Pinyon Script，Engrosser's Script 风格） ----------
+   标题「SoulLink」用斯宾塞体。系统若装有正版 Spencerian Script 会优先，
+   否则回退到本扩展内置的 woff2，保证离线也稳定渲染为斯宾塞体。 */
+@font-face {
+  font-family: "Pinyon Script";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/pinyon-script-latin.woff2) format("woff2");
+}
 
 /* ---------- 设计令牌：基础变量（中性浅色外观，主题块的底色） ---------- */
 .soullink-sphere,
@@ -92,6 +103,10 @@
   0% { transform: scale(1); opacity: 1; }
   100% { transform: scale(0.96) translateY(6px); opacity: 0; }
 }
+@keyframes soullink-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 /* =========================================================
    悬浮球：玻璃 Dock 球
@@ -170,8 +185,8 @@
 .soullink-panel__dialog {
   position: fixed;
   z-index: 1;
-  width: min(700px, calc(100vw - 24px));
-  height: min(600px, calc(100vh - 48px));
+  width: min(400px, calc(100vw - 24px));
+  height: min(680px, calc(100vh - 48px));
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 48px);
   margin: 0;
@@ -189,13 +204,9 @@
   overflow: hidden;
 }
 
-/* 宽模式：日志/预设/档案/世界书/角色扮演视图经红绿灯「缩放」展开 */
-.soullink-panel__dialog.is-log-mode,
-.soullink-panel__dialog.is-preset-mode,
-.soullink-panel__dialog.is-archive-mode,
-.soullink-panel__dialog.is-worldbook-mode,
-.soullink-panel__dialog.is-round-mode {
-  width: min(900px, calc(100vw - 24px));
+/* 宽模式：仅日志视图经红绿灯「缩放」展开，其余视图沿用基础宽度 */
+.soullink-panel__dialog.is-log-mode {
+  width: min(700px, calc(100vw - 24px));
   height: min(680px, calc(100vh - 48px));
 }
 
@@ -267,8 +278,8 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  font-family: "Spencerian Script", "Vladimir Script", "Segoe Script", "Snell Roundhand", "Brush Script MT", cursive;
-  font-size: 21px;
+  font-family: "Pinyon Script", "Spencerian Script", "Vladimir Script", "Segoe Script", "Snell Roundhand", "Brush Script MT", cursive;
+  font-size: 27px;
   font-weight: 500;
   font-synthesis: none;
   color: var(--sl-ink);
@@ -620,6 +631,9 @@ textarea.soullink-input {
 
 /* macOS 开关 */
 .soullink-switch {
+  /* 宿主常全局重置为 border-box，会把纸纹主题的边框算进 height，
+     导致 content 变矮、滑块 top:2px 放不下而偏下，这里固定 content-box 恢复原像素计算 */
+  box-sizing: content-box;
   position: relative;
   flex: none;
   width: 40px;
@@ -696,121 +710,159 @@ textarea.soullink-input {
 }
 
 /* =========================================================
-   概览页（首页）
+   概览页（首页）：手机桌面式图标网格
    ========================================================= */
-.soullink-home__hero {
+.soullink-home {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 0;
+}
+
+/* 顶部：应用名 + 日志小入口（仅图标） */
+.soullink-home__header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin: 6px 0 18px;
+  gap: 12px;
+  padding: 0 4px;
 }
 
 .soullink-home__logo {
   flex: none;
-  width: 52px;
-  height: 52px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 18px;
   color: #fff;
   background: linear-gradient(180deg, #0a84ff, #0071e3);
-  border-radius: 13px;
+  border-radius: 11px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.3),
     var(--sl-shadow-md);
 }
 
-.soullink-home__hello {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 700;
+.soullink-home__title {
+  flex: 1;
+  min-width: 0;
+  font-family: "Copperplate", "Copperplate Gothic Light", "Copperplate Gothic Bold", "Lucida Calligraphy", "Brush Script MT", serif;
+  font-size: 22px;
+  font-weight: 500;
+  font-synthesis: none;
   color: var(--sl-ink);
+  letter-spacing: 0;
 }
 
-.soullink-home__sub {
-  margin: 2px 0 0;
-  font-size: 12.5px;
-  color: var(--sl-text-secondary);
-}
-
-.soullink-home__rows {
-  display: flex;
-  flex-direction: column;
-}
-
-.soullink-home__row {
-  width: 100%;
-  height: 38px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 6px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--sl-ink);
-  font-family: var(--sl-font);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.soullink-home__row:hover {
-  background: var(--sl-btn-bg);
-}
-
-.soullink-home__row-icon {
+/* 日志小入口：只有图标没有文字 */
+.soullink-home__log-entry {
   flex: none;
-  width: 18px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  border: none;
+  border-radius: 9px;
+  background: var(--sl-btn-bg);
   color: var(--sl-text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
 }
 
-.soullink-home__row-label {
-  flex: none;
-  min-width: 70px;
-  font-weight: 500;
+.soullink-home__log-entry:hover {
+  background: var(--sl-btn-bg-hover);
+  color: var(--sl-ink);
 }
 
-.soullink-home__row-status {
-  flex: 1;
+.soullink-home__log-entry:active {
+  transform: scale(0.92);
+}
+
+/* 图标网格：两列三行（手机桌面式） */
+.soullink-home__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.soullink-home__tile {
+  position: relative;
   min-width: 0;
-  font-size: 12px;
-  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 8px 14px;
+  border: none;
+  border-radius: var(--sl-radius-card);
+  background: var(--sl-surface);
+  color: var(--sl-ink);
+  font-family: var(--sl-font);
+  cursor: pointer;
+  box-shadow: var(--sl-shadow-sm);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.soullink-home__tile:hover {
+  background: var(--sl-surface-muted);
+  box-shadow: var(--sl-shadow-md);
+  transform: translateY(-1px);
+}
+
+.soullink-home__tile:active {
+  transform: scale(0.96);
+}
+
+.soullink-home__tile-icon {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--sl-accent);
+  background: var(--sl-accent-tint);
+  border-radius: 13px;
+}
+
+.soullink-home__tile-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 
-/* 角色扮演行徽章：上一轮推演状态点（有记录时显示，颜色随 data-state） */
-.soullink-home__row-badge {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  margin-left: 8px;
+.soullink-home__tile-status {
+  font-size: 11px;
+  color: var(--sl-text-secondary);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* 角色扮演磁贴徽章：上一轮推演状态点（有记录时显示，颜色随 data-state） */
+.soullink-home__tile-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--sl-pink);
 }
 
-.soullink-home__row-badge[data-state='ok'] { background: var(--sl-green); }
-.soullink-home__row-badge[data-state='warn'] { background: var(--sl-yellow); }
-.soullink-home__row-badge[data-state='error'] { background: var(--sl-pink); }
-.soullink-home__row-badge[data-state='idle'] { background: var(--sl-text-tertiary); }
-
-.soullink-home__row-chevron {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-top: 1.5px solid var(--sl-text-tertiary);
-  border-right: 1.5px solid var(--sl-text-tertiary);
-  transform: rotate(45deg);
-  opacity: 0.7;
-}
+.soullink-home__tile-badge[data-state='ok'] { background: var(--sl-green); }
+.soullink-home__tile-badge[data-state='warn'] { background: var(--sl-yellow); }
+.soullink-home__tile-badge[data-state='error'] { background: var(--sl-pink); }
+.soullink-home__tile-badge[data-state='idle'] { background: var(--sl-text-tertiary); }
 
 /* =========================================================
    API 连接视图
@@ -1003,7 +1055,10 @@ textarea.soullink-input {
 .soullink-filter__toggle span::after {
   content: '';
   position: absolute;
-  top: 2px;
+  /* 宿主可能全局重置 box-sizing，纸纹主题的 span 边框会吃掉 content 高度，
+     固定 top:2px 会让滑块偏下，改用 50%+translateY 垂直居中 */
+  top: 50%;
+  transform: translateY(-50%);
   left: 2px;
   width: 18px;
   height: 18px;
@@ -1018,7 +1073,7 @@ textarea.soullink-input {
 }
 
 .soullink-filter__toggle input:checked + span::after {
-  transform: translateX(14px);
+  transform: translate(14px, -50%);
 }
 
 .soullink-filter__toggle input:focus-visible + span {
@@ -1386,7 +1441,7 @@ textarea.soullink-input {
 }
 
 .soullink-preset__text {
-  min-height: 240px;
+  min-height: 400px;
   font-family: var(--sl-mono);
   font-size: 12.5px;
 }
@@ -1513,14 +1568,15 @@ textarea.soullink-input {
 .soullink-archive__card-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 9px 12px;
   cursor: pointer;
 }
 
 .soullink-archive__card-name {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 130px;
+  min-width: 130px;
   font-size: 13.5px;
   font-weight: 600;
   color: var(--sl-ink);
@@ -1665,18 +1721,25 @@ textarea.soullink-input {
 /* =========================================================
    世界书视图
    ========================================================= */
+/* 头部标题固定不换行，避免被状态/聊天挤到一字一行的竖排 */
+.soullink-worldbook .soullink-panel__section-title {
+  flex: none;
+  white-space: nowrap;
+}
+
 .soullink-worldbook__status,
 .soullink-worldbook__chat {
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 11.5px;
   color: var(--sl-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .soullink-worldbook__chat {
   max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .soullink-worldbook__toolbar {
@@ -2641,14 +2704,22 @@ textarea.soullink-input {
   box-shadow: 1px 2px 0 rgba(61, 43, 31, 0.3);
 }
 
+/* 轨道加宽到 42px 后同步滑块位移，保持左右对称、开启时贴齐右缘 */
+.soullink-panel:where([data-theme='paper']) .soullink-switch.is-on .soullink-switch__thumb {
+  transform: translateX(18px);
+}
+
 .soullink-panel:where([data-theme='paper']) .soullink-filter__toggle span {
   border: 2px solid var(--sl-ink);
-  width: 38px;
-  height: 22px;
 }
 
 .soullink-panel:where([data-theme='paper']) .soullink-filter__toggle span::after {
   box-shadow: 1px 2px 0 rgba(61, 43, 31, 0.3);
+}
+
+/* 轨道加宽到 38px 后同步滑块位移，保持左右对称、开启时贴齐右缘 */
+.soullink-panel:where([data-theme='paper']) .soullink-filter__toggle input:checked + span::after {
+  transform: translate(16px, -50%);
 }
 
 /* 说明文字：便签条 */
@@ -3202,9 +3273,9 @@ textarea.soullink-input {
   .soullink-panel__dialog {
     left: auto;
     top: auto;
-    width: min(700px, calc(100vw - 24px));
-    height: min(600px, calc(100vh - 48px));
-    height: min(600px, calc(100dvh - 48px));
+    width: min(400px, calc(100vw - 24px));
+    height: min(680px, calc(100vh - 48px));
+    height: min(680px, calc(100dvh - 48px));
     max-width: calc(100vw - 24px);
     max-height: calc(100vh - 48px);
     max-height: calc(100dvh - 48px);
@@ -3235,18 +3306,27 @@ textarea.soullink-input {
   }
 
   /* 概览页紧凑 */
-  .soullink-home__hero {
-    padding: 14px 14px 10px;
+  .soullink-home {
+    gap: 14px;
   }
-  .soullink-home__hello {
-    font-size: 22px;
+  .soullink-home__title {
+    font-size: 20px;
+  }
+  .soullink-home__grid {
+    gap: 10px;
+  }
+  .soullink-home__tile {
+    padding: 14px 6px 10px;
+    gap: 6px;
+  }
+  .soullink-home__tile-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
   }
   .soullink-panel__section {
     padding: 12px;
     margin-bottom: 10px;
-  }
-  .soullink-home__row {
-    min-height: 40px;
   }
 
   /* 操作行 / 筛选行换行，避免横向溢出 */

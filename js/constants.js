@@ -1,5 +1,5 @@
 const MODULE_NAME = 'SoulLink';
-const MODULE_VERSION = '1.6.0';
+const MODULE_VERSION = '1.7.0';
 const GITHUB_REPO_URL = 'https://github.com/Rosa9527/SoulLink';
 const GITHUB_MANIFEST_URL = 'https://raw.githubusercontent.com/Rosa9527/SoulLink/main/manifest.json';
 const GITHUB_API_MANIFEST_URL = 'https://api.github.com/repos/Rosa9527/SoulLink/contents/manifest.json';
@@ -26,16 +26,13 @@ const MENU_ICON_CLASS = 'fa-solid fa-link';
 const LOG_ICON_CLASS = 'fa-solid fa-scroll';
 const PRESET_ICON_CLASS = 'fa-solid fa-file-lines';
 const HOME_ICON_CLASS = 'fa-solid fa-house';
-const FILTER_ICON_CLASS = 'fa-solid fa-filter';
 const PANEL_TITLE_ID = 'soullink-panel-title';
 const PANEL_BACK_ID = 'soullink-panel-back';
 const HOME_VIEW_ID = 'soullink-home-view';
 const API_VIEW_ID = 'soullink-api-view';
 const LOG_VIEW_ID = 'soullink-log-view';
-const FILTER_VIEW_ID = 'soullink-filter-view';
 // 视图切换：概览页功能行与其余视图共用 data-view 驱动。
 const HOME_API_STATUS_ID = 'soullink-home-api-status';
-const HOME_FILTER_STATUS_ID = 'soullink-home-filter-status';
 const API_STATUS_ID = 'soullink-api-status';
 const API_URL_ID = 'soullink-api-url';
 const API_KEY_ID = 'soullink-api-key';
